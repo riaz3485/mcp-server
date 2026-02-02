@@ -1,8 +1,10 @@
 package com.textellent.mcp.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -20,13 +22,21 @@ public class McpToolDefinition {
     @JsonProperty("outputSchema")
     private Map<String, Object> outputSchema;
 
-    @JsonProperty("readOnly")
+    /**
+     * MCP-compliant annotations object containing safety hints.
+     * This is what ChatGPT Apps uses to determine if a tool requires confirmation.
+     */
+    @JsonProperty("annotations")
+    private Map<String, Object> annotations;
+
+    // Keep internal fields for backwards compatibility and internal logic
+    @JsonIgnore
     private Boolean readOnly;
 
-    @JsonProperty("destructive")
+    @JsonIgnore
     private Boolean destructive;
 
-    @JsonProperty("requiredScope")
+    @JsonIgnore
     private String requiredScope;
 
     public McpToolDefinition() {
@@ -48,6 +58,7 @@ public class McpToolDefinition {
         this.readOnly = readOnly;
         this.destructive = destructive;
         this.requiredScope = requiredScope;
+        updateAnnotations();
     }
 
     public String getName() {
@@ -88,6 +99,7 @@ public class McpToolDefinition {
 
     public void setReadOnly(Boolean readOnly) {
         this.readOnly = readOnly;
+        updateAnnotations();
     }
 
     public Boolean getDestructive() {
@@ -96,6 +108,7 @@ public class McpToolDefinition {
 
     public void setDestructive(Boolean destructive) {
         this.destructive = destructive;
+        updateAnnotations();
     }
 
     public String getRequiredScope() {
@@ -104,5 +117,44 @@ public class McpToolDefinition {
 
     public void setRequiredScope(String requiredScope) {
         this.requiredScope = requiredScope;
+    }
+
+    public Map<String, Object> getAnnotations() {
+        return annotations;
+    }
+
+    public void setAnnotations(Map<String, Object> annotations) {
+        this.annotations = annotations;
+    }
+
+    /**
+     * Update the MCP-compliant annotations object based on internal fields.
+     * MCP spec fields:
+     * - readOnlyHint: true if the tool only reads data (no side effects)
+     * - destructiveHint: true if the tool can delete/modify data permanently
+     * - idempotentHint: true if calling multiple times has same effect as once
+     * - openWorldHint: true if the tool interacts with external world
+     */
+    private void updateAnnotations() {
+        if (this.annotations == null) {
+            this.annotations = new HashMap<>();
+        }
+
+        // readOnlyHint: true for GET/list operations that don't modify data
+        if (this.readOnly != null) {
+            this.annotations.put("readOnlyHint", this.readOnly);
+        }
+
+        // destructiveHint: true for DELETE/UPDATE operations
+        if (this.destructive != null) {
+            this.annotations.put("destructiveHint", this.destructive);
+        }
+
+        // idempotentHint: read-only operations are always idempotent
+        // For write operations, assume they may not be idempotent (safer default)
+        this.annotations.put("idempotentHint", Boolean.TRUE.equals(this.readOnly));
+
+        // openWorldHint: all our tools interact with external Textellent API
+        this.annotations.put("openWorldHint", true);
     }
 }

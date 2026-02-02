@@ -12,8 +12,8 @@ public class JwtClaimsExtractor {
 
     /**
      * Extract authCode from JWT token.
-     * Checks multiple possible claim names for flexibility.
-     * For ChatGPT Apps, falls back to user_name (email) as authCode.
+     * The authCode is always fetched from client_contact_details table and added to JWT by OAuth2 server.
+     * This is the primary authentication credential for backend API calls.
      *
      * @param jwt The JWT token
      * @return The authCode, or null if not found
@@ -23,26 +23,39 @@ public class JwtClaimsExtractor {
             return null;
         }
 
-        // Try different possible claim names
+        // Primary claim name for client's own auth_code (from client_contact_details)
         String authCode = jwt.getClaimAsString("auth_code");
         if (authCode == null) {
             authCode = jwt.getClaimAsString("authCode");
         }
-        if (authCode == null) {
-            authCode = jwt.getClaimAsString("textellent_auth_code");
-        }
-
-        // For ChatGPT Apps and other OAuth2 clients, use user_name (email) as authCode
-        if (authCode == null) {
-            authCode = jwt.getClaimAsString("user_name");
-        }
-
-        // Final fallback to email claim
-        if (authCode == null) {
-            authCode = jwt.getClaimAsString("email");
-        }
 
         return authCode;
+    }
+
+    /**
+     * Extract partner authCode from JWT token.
+     * The partner authCode is optionally fetched from partner table and added to JWT.
+     * This is used when a client wants to act on behalf of their offices/sub-clients.
+     * The partnerClientCode must be provided as a header to use this.
+     *
+     * @param jwt The JWT token
+     * @return The partner authCode, or null if not found
+     */
+    public String extractPartnerAuthCode(Jwt jwt) {
+        if (jwt == null) {
+            return null;
+        }
+
+        // Partner auth_code claim (from partner table)
+        String partnerAuthCode = jwt.getClaimAsString("partner_auth_code");
+        if (partnerAuthCode == null) {
+            partnerAuthCode = jwt.getClaimAsString("partnerAuthCode");
+        }
+        if (partnerAuthCode == null) {
+            partnerAuthCode = jwt.getClaimAsString("partnerauthCode");
+        }
+
+        return partnerAuthCode;
     }
 
     /**

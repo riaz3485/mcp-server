@@ -38,7 +38,8 @@
       "Bash(timeout:*)",
       "Bash(ping:*)",
       "Bash(ls:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(mvn compile:*)"
     ]
   }
 }

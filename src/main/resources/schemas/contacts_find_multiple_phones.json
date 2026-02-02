@@ -1,8 +1,12 @@
 {
-  "description": "Find contact with multiple phone numbers",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Find contact with multiple phone numbers",
   "inputSchema": {
     "type": "object",
     "properties": {
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
+      },
       "extId": {
         "type": "string",
         "description": "External ID"

@@ -526,18 +526,37 @@ public class McpController {
                 JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
                 Jwt jwt = jwtAuth.getToken();
 
-                // Extract authCode from JWT claims (takes precedence over header)
+                // Always extract client's own authCode from JWT (from client_contact_details table)
                 String jwtAuthCode = jwtClaimsExtractor.extractAuthCode(jwt);
-                if (jwtAuthCode != null && !jwtAuthCode.isEmpty()) {
-                    finalAuthCode = jwtAuthCode;
-                    logger.debug("Using authCode from JWT claims for tenant isolation");
+
+                // Check if partnerClientCode is provided in tool arguments (ChatGPT Apps can't pass headers)
+                String toolPartnerCode = arguments != null ? (String) arguments.get("partnerClientCode") : null;
+                if (toolPartnerCode != null && !toolPartnerCode.isEmpty()) {
+                    finalPartnerCode = toolPartnerCode;
+                    logger.info("Extracted partnerClientCode from tool arguments: {}", toolPartnerCode);
                 }
 
-                // Extract partnerClientCode from JWT claims (takes precedence over header)
-                String jwtPartnerCode = jwtClaimsExtractor.extractPartnerClientCode(jwt);
-                if (jwtPartnerCode != null && !jwtPartnerCode.isEmpty()) {
-                    finalPartnerCode = jwtPartnerCode;
-                    logger.debug("Using partnerClientCode from JWT claims");
+                // If partnerClientCode is provided (from tool arguments or header),
+                // use partner_auth_code instead of regular auth_code
+                if (finalPartnerCode != null && !finalPartnerCode.isEmpty()) {
+                    // Client wants to act on behalf of office/sub-client
+                    logger.info("Client requesting tags for partnerClientCode: {}", finalPartnerCode);
+
+                    // Use partner_auth_code from JWT (from partner table)
+                    String partnerAuthCode = jwtClaimsExtractor.extractPartnerAuthCode(jwt);
+                    if (partnerAuthCode != null && !partnerAuthCode.isEmpty()) {
+                        finalAuthCode = partnerAuthCode;
+                        logger.info("Using partner_auth_code for partnerClientCode: {}", finalPartnerCode);
+                    } else {
+                        logger.warn("partnerClientCode provided but partner_auth_code not found in JWT");
+                        return createErrorResponse(request.getId(), -32001,
+                                "Partner authentication is not available. Your account cannot access tags for partner offices. " +
+                                "Please contact support to enable partner access.");
+                    }
+                } else {
+                    // Normal case: client calling APIs for themselves
+                    finalAuthCode = jwtAuthCode;
+                    logger.debug("Using auth_code from JWT claims (client's own auth)");
                 }
             }
 
@@ -545,7 +564,7 @@ public class McpController {
             if (finalAuthCode == null || finalAuthCode.isEmpty()) {
                 auditLogService.logFailure(toolName, arguments, "Missing authCode");
                 return createErrorResponse(request.getId(), -32001,
-                    "authCode is required (either as header or in JWT claims)");
+                    "authCode is required in JWT claims (must be added by OAuth2 server)");
             }
 
             // Execute the tool with credentials from JWT or headers

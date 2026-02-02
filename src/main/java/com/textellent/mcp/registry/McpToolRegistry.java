@@ -71,6 +71,7 @@ public class McpToolRegistry {
         registerTool("contacts_add", contactApiService::addContacts);
         registerTool("contacts_update", contactApiService::updateContact);
         registerTool("contacts_get_all", contactApiService::getAllContacts);
+        registerTool("contacts_get_summary", contactApiService::getContactsSummary);
         registerTool("contacts_get", contactApiService::getContact);
         registerTool("contacts_delete", contactApiService::deleteContact);
         registerTool("contacts_find_multiple_phones", contactApiService::findContactWithMultiplePhoneNumbers);
@@ -81,6 +82,7 @@ public class McpToolRegistry {
         registerTool("tags_update", tagApiService::updateTag);
         registerTool("tags_get", tagApiService::getTag);
         registerTool("tags_get_all", tagApiService::getAllTags);
+        registerTool("tags_get_summary", tagApiService::getTagsSummary);
         registerTool("tags_assign_contacts", tagApiService::assignContactsToTag);
         registerTool("tags_delete", tagApiService::deleteTag);
         registerTool("tags_remove_contacts", tagApiService::removeContactsFromTag);
@@ -227,14 +229,14 @@ public class McpToolRegistry {
             toolDef.setDestructive(false);
             toolDef.setRequiredScope("read"); // Changed from textellent.read to match OAuth2 scopes
         }
-        // Destructive tools (DELETE operations)
-        else if (toolName.contains("_delete") || toolName.contains("_cancel") ||
+        // Destructive tools (DELETE/UPDATE operations)
+        else if (toolName.contains("_delete") || toolName.contains("_cancel") || toolName.contains("_update") ||
                  toolName.equals("webhook_unsubscribe") || toolName.equals("tags_remove_contacts")) {
             toolDef.setReadOnly(false);
             toolDef.setDestructive(true);
             toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
         }
-        // Write tools (CREATE/UPDATE operations)
+        // Write tools (CREATE operations)
         else {
             toolDef.setReadOnly(false);
             toolDef.setDestructive(false);

@@ -1,5 +1,5 @@
 {
-  "description": "Create a new appointment",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Create a new appointment",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -56,6 +56,10 @@
           }
         },
         "required": ["startDateTime", "endDateTime", "phoneNumber"]
+      },
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
     "required": ["appointmentData"]
