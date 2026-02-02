@@ -71,6 +71,7 @@ public class McpToolRegistry {
         registerTool("contacts_add", contactApiService::addContacts);
         registerTool("contacts_update", contactApiService::updateContact);
         registerTool("contacts_get_all", contactApiService::getAllContacts);
+        registerTool("contacts_get_summary", contactApiService::getContactsSummary);
         registerTool("contacts_get", contactApiService::getContact);
         registerTool("contacts_delete", contactApiService::deleteContact);
         registerTool("contacts_find_multiple_phones", contactApiService::findContactWithMultiplePhoneNumbers);
@@ -81,6 +82,7 @@ public class McpToolRegistry {
         registerTool("tags_update", tagApiService::updateTag);
         registerTool("tags_get", tagApiService::getTag);
         registerTool("tags_get_all", tagApiService::getAllTags);
+        registerTool("tags_get_summary", tagApiService::getTagsSummary);
         registerTool("tags_assign_contacts", tagApiService::assignContactsToTag);
         registerTool("tags_delete", tagApiService::deleteTag);
         registerTool("tags_remove_contacts", tagApiService::removeContactsFromTag);
@@ -141,6 +143,9 @@ public class McpToolRegistry {
                         toolDef.setDescription((String) schemaMap.get("description"));
                         toolDef.setInputSchema((Map<String, Object>) schemaMap.get("inputSchema"));
                         toolDef.setOutputSchema((Map<String, Object>) schemaMap.get("outputSchema"));
+
+                        // Set safety metadata based on tool type
+                        configureSafetyMetadata(toolName, toolDef);
 
                         toolDefinitions.put(toolName, toolDef);
 
@@ -203,5 +208,39 @@ public class McpToolRegistry {
      */
     public boolean hasTool(String toolName) {
         return handlers.containsKey(toolName);
+    }
+
+    /**
+     * Get a specific tool definition by name.
+     */
+    public McpToolDefinition getToolDefinition(String toolName) {
+        return toolDefinitions.get(toolName);
+    }
+
+    /**
+     * Configure safety metadata for a tool based on its name and function.
+     */
+    private void configureSafetyMetadata(String toolName, McpToolDefinition toolDef) {
+        // Read-only tools (GET operations, list operations)
+        if (toolName.startsWith("contacts_get") || toolName.startsWith("tags_get") ||
+            toolName.startsWith("events_") || toolName.equals("webhook_list_subscriptions") ||
+            toolName.equals("contacts_find") || toolName.equals("contacts_find_multiple_phones")) {
+            toolDef.setReadOnly(true);
+            toolDef.setDestructive(false);
+            toolDef.setRequiredScope("read"); // Changed from textellent.read to match OAuth2 scopes
+        }
+        // Destructive tools (DELETE/UPDATE operations)
+        else if (toolName.contains("_delete") || toolName.contains("_cancel") || toolName.contains("_update") ||
+                 toolName.equals("webhook_unsubscribe") || toolName.equals("tags_remove_contacts")) {
+            toolDef.setReadOnly(false);
+            toolDef.setDestructive(true);
+            toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
+        }
+        // Write tools (CREATE operations)
+        else {
+            toolDef.setReadOnly(false);
+            toolDef.setDestructive(false);
+            toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
+        }
     }
 }

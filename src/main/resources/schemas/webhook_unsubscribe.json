@@ -1,5 +1,5 @@
 {
-  "description": "Unsubscribe from a webhook event",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Unsubscribe from a webhook event",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -14,6 +14,10 @@
       "targetUrl": {
         "type": "string",
         "description": "The webhook target URL"
+      },
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to manage webhooks for a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
     "required": ["clientId", "event", "targetUrl"]

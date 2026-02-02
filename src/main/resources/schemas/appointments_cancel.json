@@ -1,5 +1,5 @@
 {
-  "description": "Cancel an appointment",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Cancel an appointment",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -10,6 +10,10 @@
       "extId": {
         "type": "string",
         "description": "External ID for the appointment"
+      },
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
     "required": ["extId"]

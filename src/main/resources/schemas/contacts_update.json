@@ -1,8 +1,12 @@
 {
-  "description": "Update an existing contact in Textellent",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Update an existing contact in Textellent",
   "inputSchema": {
     "type": "object",
     "properties": {
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
+      },
       "contactId": {
         "type": "string",
         "description": "The ID of the contact to update"

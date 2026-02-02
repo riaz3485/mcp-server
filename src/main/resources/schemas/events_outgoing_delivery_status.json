@@ -1,5 +1,5 @@
 {
-  "description": "Get outgoing message delivery status events",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Get outgoing message delivery status events",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -7,6 +7,10 @@
         "type": "integer",
         "description": "Number of events to retrieve",
         "default": 10
+      },
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to retrieve events for a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     }
   },

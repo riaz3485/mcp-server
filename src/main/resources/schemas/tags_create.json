@@ -1,8 +1,12 @@
 {
-  "description": "Create new contact tags",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Create new contact tags. IMPORTANT: Before creating a tag, ALWAYS call tags_get_summary with the tagName parameter FIRST to check if the tag already exists. Only create a tag if exists=false. If the tag exists, use tags_assign_contacts instead to add contacts to the existing tag.",
   "inputSchema": {
     "type": "object",
     "properties": {
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
+      },
       "tags": {
         "type": "array",
         "items": {
@@ -10,7 +14,7 @@
           "properties": {
             "tagName": {
               "type": "string",
-              "description": "Name of the tag"
+              "description": "Name of the tag. MUST be unique - call tags_get_summary with this name first to verify it doesn't exist."
             },
             "signUpKeyword": {
               "type": "string",

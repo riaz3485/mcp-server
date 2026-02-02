@@ -1,8 +1,13 @@
 {
-  "description": "List all webhook subscriptions",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. List all webhook subscriptions",
   "inputSchema": {
     "type": "object",
-    "properties": {}
+    "properties": {
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to manage webhooks for a specific partner office/sub-client. Only use when explicitly requested by the user."
+      }
+    }
   },
   "outputSchema": {
     "type": "object",

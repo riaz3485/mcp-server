@@ -1,5 +1,5 @@
 {
-  "description": "Send SMS/MMS using Textellent API",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Send SMS/MMS using Textellent API",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -28,6 +28,10 @@
           "type": "string"
         },
         "description": "Array of media file URLs to attach"
+      },
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
     "required": ["text", "from", "to"]

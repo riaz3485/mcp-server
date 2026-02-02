@@ -1,5 +1,5 @@
 {
-  "description": "Update an existing appointment",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Update an existing appointment",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -55,6 +55,10 @@
             "description": "Appointment status (e.g., upcoming)"
           }
         }
+      },
+      "partnerClientCode": {
+        "type": "string",
+        "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
     "required": ["appointmentData"]
