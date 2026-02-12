@@ -8,7 +8,6 @@ import org.everit.json.schema.Schema;
 import org.everit.json.schema.ValidationException;
 import org.everit.json.schema.loader.SchemaLoader;
 import org.json.JSONObject;
-import org.json.JSONTokener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +34,9 @@ public class McpToolRegistry {
 
     @Autowired
     private MessageApiService messageApiService;
+
+    @Autowired
+    private com.textellent.mcp.services.ActionListService actionListService;
 
     @Autowired
     private ContactApiService contactApiService;
@@ -64,6 +66,9 @@ public class McpToolRegistry {
      * Register all MCP tools with their handlers.
      */
     private void registerAllTools() {
+        // Action list tools
+        registerTool("action_list", actionListService::getActionList);
+
         // Message tools
         registerTool("messages_send", messageApiService::sendMessage);
 
