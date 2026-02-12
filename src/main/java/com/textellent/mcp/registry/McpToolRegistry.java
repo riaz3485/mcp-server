@@ -68,6 +68,7 @@ public class McpToolRegistry {
     private void registerAllTools() {
         // Action list tools
         registerTool("action_list", actionListService::getActionList);
+        registerTool("list_actions", actionListService::listActions);
 
         // Message tools
         registerTool("messages_send", messageApiService::sendMessage);

@@ -33,5 +33,22 @@ public class ActionListService {
         result.put("actions", Collections.emptyList());
         return result;
     }
+
+    /**
+     * Placeholder implementation for the list_actions tool.
+     * For now, this method mirrors getActionList and returns an empty list of actions.
+     *
+     * @param arguments         Tool arguments (currently unused)
+     * @param authCode          Authentication code
+     * @param partnerClientCode Partner client code
+     * @return A result map with an empty "actions" array
+     */
+    public Object listActions(Map<String, Object> arguments, String authCode, String partnerClientCode) {
+        logger.info("ActionListService.listActions called with arguments: {}", arguments);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("actions", Collections.emptyList());
+        return result;
+    }
 }
 

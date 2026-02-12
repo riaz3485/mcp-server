@@ -1,0 +1,21 @@
+{
+  "description": "List available actions for the Action List feature. This is currently a placeholder tool that always returns an empty list of actions.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "actions": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        },
+        "description": "Currently always an empty array. Reserved for future action metadata."
+      }
+    },
+    "required": ["actions"]
+  }
+}
