@@ -123,7 +123,7 @@ public class ContactApiService {
                     })
                     .block();
 
-            // Parse response and extract ONLY essential contact info to prevent hallucination
+            // Parse response and expose full contact objects (not a simplified summary).
             if (response != null) {
                 try {
                     ObjectMapper mapper = new ObjectMapper();
@@ -148,63 +148,49 @@ public class ContactApiService {
 
                     JsonNode contactsNode;
                     JsonNode totalCountNode = null;
+                    JsonNode pageSizeNode = null;
+                    JsonNode pageNumNode = null;
                     if (dataNode.isArray()) {
                         contactsNode = dataNode;
                     } else {
                         contactsNode = dataNode.get("contacts");
                         totalCountNode = dataNode.get("totalCount");
+                        pageSizeNode = dataNode.get("pageSize");
+                        pageNumNode = dataNode.get("pageNum");
                     }
 
                     if (contactsNode != null && contactsNode.isArray()) {
-                        List<Map<String, String>> simplifiedContacts = new ArrayList<>();
-                        for (JsonNode contact : contactsNode) {
-                            Map<String, String> simpleContact = new HashMap<>();
+                        Map<String, Object> fullResponse = new HashMap<>();
 
-                            JsonNode firstNameNode = contact.get("firstName");
-                            JsonNode lastNameNode = contact.get("lastName");
-                            String name = "";
-                            if (firstNameNode != null && lastNameNode != null) {
-                                name = firstNameNode.asText() + " " + lastNameNode.asText();
-                            } else if (firstNameNode != null) {
-                                name = firstNameNode.asText();
-                            } else if (lastNameNode != null) {
-                                name = lastNameNode.asText();
-                            }
-                            simpleContact.put("name", name);
+                        // Keep full contact objects exactly as provided by the backend.
+                        Object fullContacts = mapper.convertValue(contactsNode, Object.class);
+                        fullResponse.put("contacts", fullContacts);
 
-                            JsonNode phoneNode = contact.get("phoneNumber");
-                            if (phoneNode == null) {
-                                phoneNode = contact.get("mobile");
-                            }
-                            if (phoneNode != null) {
-                                simpleContact.put("phone", phoneNode.asText());
-                            }
+                        int totalCount = totalCountNode != null && totalCountNode.isInt()
+                                ? totalCountNode.asInt()
+                                : contactsNode.size();
+                        fullResponse.put("totalCount", totalCount);
 
-                            JsonNode idNode = contact.get("id");
-                            if (idNode != null) {
-                                simpleContact.put("id", idNode.asText());
-                            }
+                        int effectivePageSize = pageSizeNode != null && pageSizeNode.isInt()
+                                ? pageSizeNode.asInt()
+                                : (pageSize != null ? pageSize : contactsNode.size());
+                        int effectivePageNum = pageNumNode != null && pageNumNode.isInt()
+                                ? pageNumNode.asInt()
+                                : (pageNum != null ? pageNum : 1);
 
-                            simplifiedContacts.add(simpleContact);
-                        }
+                        fullResponse.put("pageSize", effectivePageSize);
+                        fullResponse.put("pageNum", effectivePageNum);
 
-                        Map<String, Object> simplifiedResponse = new HashMap<>();
-                        simplifiedResponse.put("contacts", simplifiedContacts);
-                        int totalCount = totalCountNode != null ? totalCountNode.asInt() : simplifiedContacts.size();
-                        simplifiedResponse.put("totalCount", totalCount);
-                        simplifiedResponse.put("pageSize", pageSize);
-                        simplifiedResponse.put("pageNum", pageNum);
+                        logger.info("Returning {} full contacts out of {} total (page {}/{})",
+                                contactsNode.size(),
+                                totalCount,
+                                effectivePageNum,
+                                effectivePageSize);
 
-                        logger.info("Returning {} simplified contacts out of {} total (page {}/{})",
-                            simplifiedContacts.size(),
-                            totalCount,
-                            pageNum,
-                            pageSize);
-
-                        return mapper.writeValueAsString(simplifiedResponse);
+                        return mapper.writeValueAsString(fullResponse);
                     }
                 } catch (Exception e) {
-                    logger.warn("Failed to parse/simplify contacts response, returning raw response", e);
+                    logger.warn("Failed to parse contacts_get_all response, returning raw response", e);
                     return response;
                 }
             }
@@ -219,23 +205,24 @@ public class ContactApiService {
     }
 
     /**
-     * Get a summary of contacts (count + first 10 contacts) to avoid ChatGPT hallucination.
+     * Get a summary of contacts (count + simplified contact list) to avoid ChatGPT hallucination.
      * This is the DEFAULT tool for listing contacts - returns minimal data.
-     * GET /api/v1/contacts.json with pageSize=10 to get first 10 contacts
+     * GET /api/v1/contacts.json?searchKey=&pageSize=&pageNum=
      */
     public Object getContactsSummary(Map<String, Object> arguments, String authCode, String partnerClientCode) {
-        logger.info("Getting contacts summary");
+        logger.info("Getting contacts summary with arguments: {}", arguments);
 
         try {
             String searchKey = (String) arguments.getOrDefault("searchKey", "");
+            Integer pageSize = (Integer) arguments.getOrDefault("pageSize", 10);
+            Integer pageNum = (Integer) arguments.getOrDefault("pageNum", 1);
 
-            // Request first 10 contacts
             String response = webClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/api/v1/contacts.json")
                             .queryParam("searchKey", searchKey)
-                            .queryParam("pageSize", 10)
-                            .queryParam("pageNum", 1)
+                            .queryParam("pageSize", pageSize)
+                            .queryParam("pageNum", pageNum)
                             .build())
                     .header("authCode", authCode)
                     .header("partnerClientCode", partnerClientCode)
@@ -316,16 +303,21 @@ public class ContactApiService {
                     }
 
                     int totalCount = totalCountNode != null ? totalCountNode.asInt() : simplifiedContacts.size();
+                    int pSize = pageSize != null ? pageSize : 10;
+                    int pNum = pageNum != null ? pageNum : 1;
+                    boolean hasMore = (pNum * pSize) < totalCount;
                     summaryResponse.put("totalCount", totalCount);
                     summaryResponse.put("contacts", simplifiedContacts);
-                    summaryResponse.put("hasMore", totalCount > 10);
+                    summaryResponse.put("hasMore", hasMore);
+                    summaryResponse.put("pageSize", pageSize);
+                    summaryResponse.put("pageNum", pageNum);
 
                     if (searchKey != null && !searchKey.isEmpty()) {
                         summaryResponse.put("searchKey", searchKey);
                     }
 
-                    logger.info("Returning contacts summary: totalCount={}, showing {} contacts, hasMore={}",
-                            totalCount, simplifiedContacts.size(), totalCount > 10);
+                    logger.info("Returning contacts summary: totalCount={}, page {}/{}, hasMore={}",
+                            totalCount, pNum, (totalCount + pSize - 1) / pSize, hasMore);
 
                     return mapper.writeValueAsString(summaryResponse);
                 } catch (Exception e) {

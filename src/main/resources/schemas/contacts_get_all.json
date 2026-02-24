@@ -1,5 +1,5 @@
 {
-  "description": "DEPRECATED: Use contacts_get_summary instead for listing contacts. This tool is only needed for paginated browsing through large contact lists. For 'list my contacts' or 'show contacts' requests, ALWAYS use contacts_get_summary which returns the first 10 contacts efficiently. Only use this tool if the user specifically wants to browse more contacts beyond the first 10.",
+  "description": "Use this tool only when you need data that contacts_get_summary does not provide. Prefer contacts_get_summary whenever possible. When using this tool, use its pagination feature to retrieve all required pages.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -13,14 +13,14 @@
       },
       "pageSize": {
         "type": "integer",
-        "description": "Number of contacts per page (default: 10, recommended max: 50). Use smaller pages to avoid hallucination on large datasets.",
+        "description": "Number of contacts per page (default: 10). Use pagination to retrieve all required pages.",
         "default": 10,
         "minimum": 1,
         "maximum": 100
       },
       "pageNum": {
         "type": "integer",
-        "description": "Page number to retrieve (default: 1). Use pagination to browse through large contact lists.",
+        "description": "Page number to retrieve (default: 1). Use pagination to iterate through all required pages.",
         "default": 1,
         "minimum": 1
       }
@@ -31,23 +31,10 @@
     "properties": {
       "contacts": {
         "type": "array",
-        "description": "Array of simplified contact objects (id, name and phone only, not full contact details). This prevents hallucination by keeping response minimal while still allowing follow-up operations like delete/update.",
+        "description": "Array of full contact objects as returned by the Textellent API. Use contacts_get_summary when you only need a minimal listing (id, name, phone, pagination).",
         "items": {
           "type": "object",
-          "properties": {
-            "id": {
-              "type": "string",
-              "description": "Internal contact identifier (needed for follow-up operations like contacts_delete)."
-            },
-            "name": {
-              "type": "string",
-              "description": "Contact's full name (first + last)"
-            },
-            "phone": {
-              "type": "string",
-              "description": "Contact's phone number"
-            }
-          }
+          "description": "Full contact data (all fields currently provided by the Textellent contacts API). The exact shape may evolve over time."
         }
       },
       "totalCount": {
