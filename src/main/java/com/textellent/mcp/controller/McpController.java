@@ -453,6 +453,7 @@ public class McpController {
 
     /**
      * Handle tools/list method - returns all available tools filtered by user's scopes.
+     * All registered tools are now visible; safety is enforced via scopes and rate limits, not by hiding tools.
      */
     private ResponseEntity<McpRpcResponse> handleToolsList(McpRpcRequest request, Authentication authentication) {
         logger.info("Handling tools/list request");
@@ -478,11 +479,8 @@ public class McpController {
                 logger.warn("No tool definitions loaded – check that schemas/*.json exist and load correctly");
             }
 
-            // Only expose planner/commit tools via tools/list.
-            // All other tools are transaction-only and must be used via the action plan system.
-            List<McpToolDefinition> filteredTools = allTools.stream()
-                .filter(tool -> toolRegistry.isPlannerCommitTool(tool.getName()))
-                .collect(Collectors.toList());
+            // Expose all tools via tools/list; clients use safety metadata + scopes to decide how to call them.
+            List<McpToolDefinition> filteredTools = allTools;
 
             logger.debug("Filtered tools count: {}", filteredTools.size());
 
@@ -569,6 +567,7 @@ public class McpController {
 
     /**
      * Handle tools/call method - executes a specific tool with scope enforcement.
+     * All registered tools may now be called directly (subject to scopes and rate limits).
      */
     private ResponseEntity<McpRpcResponse> handleToolsCall(
             McpRpcRequest request, String authCode, String partnerClientCode, Authentication authentication) {
@@ -597,14 +596,6 @@ public class McpController {
 
             // Get tool definition to check safety metadata
             McpToolDefinition toolDef = toolRegistry.getToolDefinition(toolName);
-
-            // Block direct execution of transaction-only tools.
-            // Only planner/commit tools may be called directly; all others must go through the action plan system.
-            if (!toolRegistry.isPlannerCommitTool(toolName)) {
-                auditLogService.logFailure(toolName, arguments, "Transaction-only tool called directly");
-                return createErrorResponse(request.getId(), -32602,
-                        "This tool is transaction-only and must be used via the action commit system (list_actions → action_list → user approval → execute / execute_continue).");
-            }
 
             // Check scope authorization
             Set<String> userScopes = extractScopes(authentication);
@@ -701,11 +692,14 @@ public class McpController {
                 }
             }
 
+            // Wrap large results as MCP resources when necessary (applies to all tools)
+            Object maybeWrapped = actionListService.wrapLargeResultIfNeeded(dataToReturn);
+
             // Format response according to MCP protocol
             List<Map<String, Object>> contentArray = new ArrayList<>();
             Map<String, Object> contentItem = new HashMap<>();
             contentItem.put("type", "text");
-            contentItem.put("text", objectMapper.writeValueAsString(dataToReturn));
+            contentItem.put("text", objectMapper.writeValueAsString(maybeWrapped));
             contentArray.add(contentItem);
 
             Map<String, Object> resultMap = new HashMap<>();
