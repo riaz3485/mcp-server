@@ -1,5 +1,5 @@
 {
-  "description": "Release a large result resource when you are done using it. When execute (or execute_continue) returns resultTooLarge with a resultResourceUri, the result is available as an MCP resource that you can explore without loading into context. When you have finished using that resource, call this tool with the resource identifier (the resultResourceUri, e.g. textellent://result/{id}, or the resource id) so the server can release it. This behaviour applies to every response that returns resultTooLarge: use the resource, then call release_resource with its identifier when done.",
+  "description": "Release a large result resource when you are done using it. When execute returns resultTooLarge with a resultResourceUri, the result is available as an MCP resource that you can explore without loading into context. When you have finished using that resource, call this tool with the resource identifier (the resultResourceUri, e.g. textellent://result/{id}, or the resource id) so the server can release it. This behaviour applies to every response that returns resultTooLarge: use the resource, then call release_resource with its identifier when done.",
   "inputSchema": {
     "type": "object",
     "properties": {

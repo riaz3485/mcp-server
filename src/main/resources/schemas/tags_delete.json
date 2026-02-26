@@ -1,5 +1,5 @@
 {
-  "description": "Delete a contact tag by ID",
+  "description": "Delete a contact tag by ID. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use the `batch_action` tool instead.",
   "inputSchema": {
     "type": "object",
     "properties": {

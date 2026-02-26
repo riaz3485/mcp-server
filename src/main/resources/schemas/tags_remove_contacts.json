@@ -1,5 +1,5 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Remove one or more contacts from a tag. IMPORTANT: When removing multiple contacts from the same tag, ALWAYS include ALL phone numbers in a SINGLE call using the phoneNumbers array - DO NOT make separate calls for each contact.",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Remove one or more contacts from a tag. IMPORTANT: When removing multiple contacts from the same tag, ALWAYS include ALL phone numbers in a SINGLE call using the phoneNumbers array - DO NOT make separate calls for each contact. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use the `batch_action` tool instead.",
   "inputSchema": {
     "type": "object",
     "properties": {
