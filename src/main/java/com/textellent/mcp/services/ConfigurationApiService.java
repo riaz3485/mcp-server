@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.textellent.mcp.services.pagination.TextellentPagedListMerger;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -92,25 +95,35 @@ public class ConfigurationApiService {
 
     /**
      * List all webhook subscriptions.
-     * GET /api/v1/event/subscriptions.json
+     * GET /api/v1/event/subscriptions.json?pageNum={n} — all pages merged into one list.
      */
     public Object listSubscriptions(Map<String, Object> arguments, String authCode, String partnerClientCode) {
         logger.info("Listing webhook subscriptions");
 
         try {
-            String response = webClient.get()
-                    .uri("/api/v1/event/subscriptions.json")
-                    .header("Content-Type", "application/json")
-                    .header("authCode", authCode)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .onErrorResume(e -> {
-                        logger.error("Error listing webhook subscriptions", e);
-                        return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
-                    })
-                    .block();
-
-            return response;
+            ObjectMapper mapper = new ObjectMapper();
+            return TextellentPagedListMerger.mergeToJsonWithTotalCount(
+                    mapper,
+                    logger,
+                    "webhook_list_subscriptions",
+                    pageNum -> webClient.get()
+                            .uri(uriBuilder -> uriBuilder
+                                    .path("/api/v1/event/subscriptions.json")
+                                    .queryParam("pageNum", pageNum)
+                                    .build())
+                            .header("Content-Type", "application/json")
+                            .header("authCode", authCode)
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .onErrorResume(e -> {
+                                logger.error("Error listing webhook subscriptions page {}", pageNum, e);
+                                return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
+                            })
+                            .block(),
+                    TextellentPagedListMerger::parseSubscriptionsListPage,
+                    "subscriptions",
+                    TextellentPagedListMerger.DEFAULT_MAX_PAGES
+            );
         } catch (Exception e) {
             logger.error("Failed to list webhook subscriptions", e);
             throw new RuntimeException("Failed to list webhook subscriptions: " + e.getMessage(), e);

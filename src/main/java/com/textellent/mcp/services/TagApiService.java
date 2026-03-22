@@ -1,7 +1,7 @@
 package com.textellent.mcp.services;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.textellent.mcp.services.pagination.TextellentPagedListMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,89 +126,61 @@ public class TagApiService {
 
     /**
      * Get all contact tags using Textellent API.
-     * GET /api/v1/tags.json
+     * GET /api/v1/tags.json?pageNum={n} — all pages merged; response uses tag names only.
      */
     public Object getAllTags(Map<String, Object> arguments, String authCode, String partnerClientCode) {
         logger.info("Getting all tags with arguments: {}", arguments);
 
         try {
-            String response = webClient.get()
-                    .uri("/api/v1/tags.json")
-                    .header("authCode", authCode)
-                    .header("partnerClientCode", partnerClientCode)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .onErrorResume(e -> {
-                        logger.error("Error getting all tags", e);
-                        return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
-                    })
-                    .block();
-
-            // Parse response and return full tag list (names only)
-            if (response != null) {
-                try {
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode rootNode = mapper.readTree(response);
-
-                    // Check if this is an actual error response
-                    if (rootNode.has("error") && rootNode.get("error").isTextual()) {
-                        logger.warn("Backend returned error: {}", response);
-                        return response;
-                    }
-
-                    // Handle multiple response formats:
-                    // 1. Direct array: [ { "tagName": "..." }, ... ]
-                    // 2. Object with tags property: { "tags": [ ... ] }
-                    // 3. Object with text property containing JSON string: { "text": "[...]" }
-                    JsonNode tagsNode;
-                    if (rootNode.isArray()) {
-                        tagsNode = rootNode;
-                    } else if (rootNode.has("text")) {
-                        // Backend returned { "text": "[...]" } - parse the text field
-                        logger.info("Response has 'text' field, parsing as JSON");
-                        String textContent = rootNode.get("text").asText();
-                        JsonNode parsedText = mapper.readTree(textContent);
-                        if (parsedText.isArray()) {
-                            tagsNode = parsedText;
-                        } else {
-                            tagsNode = parsedText.get("tags");
-                        }
-                    } else {
-                        tagsNode = rootNode.get("tags");
-                    }
-
-                    if (tagsNode != null && tagsNode.isArray()) {
-                        // Extract ONLY tag names to reduce response size and prevent hallucination
-                        List<String> tagNames = new ArrayList<>();
-                        for (JsonNode tag : tagsNode) {
-                            JsonNode nameNode = tag.get("tagName");
-                            if (nameNode != null) {
-                                tagNames.add(nameNode.asText());
-                            }
-                        }
-
-                        // Build response with NAMES ONLY
-                        Map<String, Object> fullResponse = new HashMap<>();
-                        fullResponse.put("tagNames", tagNames);  // Names only, not full objects
-                        fullResponse.put("total", tagNames.size());
-
-                        logger.info("Returning {} tag names", tagNames.size());
-
-                        return mapper.writeValueAsString(fullResponse);
-                    }
-                } catch (Exception e) {
-                    logger.warn("Failed to parse/paginate tags response, returning raw response", e);
-                    return response;
-                }
+            ObjectMapper mapper = new ObjectMapper();
+            TextellentPagedListMerger.MergeOrRaw outcome = TextellentPagedListMerger.mergeAllRowsOrRaw(
+                    mapper,
+                    logger,
+                    "tags_get_all",
+                    pageNum -> fetchTagsListPage(pageNum, authCode, partnerClientCode),
+                    TextellentPagedListMerger::parseTagsListPage,
+                    TextellentPagedListMerger.DEFAULT_MAX_PAGES
+            );
+            if (outcome.rawFirstPageIfUnparsed != null) {
+                return outcome.rawFirstPageIfUnparsed;
+            }
+            if (outcome.merged == null) {
+                return null;
             }
 
-            // Should not reach here
-            logger.warn("No valid tags array found in response");
-            return response;
+            List<String> tagNames = new ArrayList<>();
+            for (Map<String, Object> tag : outcome.merged) {
+                Object name = tag.get("tagName");
+                if (name != null) {
+                    tagNames.add(name.toString());
+                }
+            }
+            Map<String, Object> fullResponse = new HashMap<>();
+            fullResponse.put("tagNames", tagNames);
+            fullResponse.put("total", tagNames.size());
+            logger.info("Returning {} tag names (merged pages)", tagNames.size());
+            return mapper.writeValueAsString(fullResponse);
         } catch (Exception e) {
             logger.error("Failed to get all tags", e);
             throw new RuntimeException("Failed to get all tags: " + e.getMessage(), e);
         }
+    }
+
+    private String fetchTagsListPage(int pageNum, String authCode, String partnerClientCode) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v1/tags.json")
+                        .queryParam("pageNum", pageNum)
+                        .build())
+                .header("authCode", authCode)
+                .header("partnerClientCode", partnerClientCode)
+                .retrieve()
+                .bodyToMono(String.class)
+                .onErrorResume(e -> {
+                    logger.error("Error getting tags page {}", pageNum, e);
+                    return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
+                })
+                .block();
     }
 
     /**
@@ -221,124 +194,57 @@ public class TagApiService {
         logger.info("Getting tags summary, searchTagName: {}", searchTagName);
 
         try {
-            String response = webClient.get()
-                    .uri("/api/v1/tags.json")
-                    .header("authCode", authCode)
-                    .header("partnerClientCode", partnerClientCode)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .onErrorResume(e -> {
-                        logger.error("Error getting tags summary", e);
-                        return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
-                    })
-                    .block();
-
-            logger.info("Received response, length: {}", response != null ? response.length() : "null");
-
-            // Parse response and extract only names
-            if (response != null) {
-                try {
-                    logger.info("Parsing JSON response...");
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode rootNode = mapper.readTree(response);
-                    logger.info("Parsed JSON, root is array: {}", rootNode.isArray());
-
-                    // Check if this is an actual error response
-                    if (rootNode.has("error") && rootNode.get("error").isTextual()) {
-                        logger.warn("Backend returned error: {}", response);
-                        return response;
-                    }
-
-                    // Handle multiple response formats:
-                    // 1. Direct array: [ { "tagName": "..." }, ... ]
-                    // 2. Object with tags property: { "tags": [ ... ] }
-                    // 3. Object with text property containing JSON string: { "text": "[...]" }
-                    JsonNode tagsNode;
-                    if (rootNode.isArray()) {
-                        logger.info("Response is array format");
-                        tagsNode = rootNode;
-                    } else if (rootNode.has("text")) {
-                        // Backend returned { "text": "[...]" } - parse the text field
-                        logger.info("Response has 'text' field, parsing as JSON");
-                        String textContent = rootNode.get("text").asText();
-                        JsonNode parsedText = mapper.readTree(textContent);
-                        if (parsedText.isArray()) {
-                            tagsNode = parsedText;
-                        } else {
-                            tagsNode = parsedText.get("tags");
-                        }
-                    } else {
-                        logger.info("Response is object format, looking for 'tags' property");
-                        tagsNode = rootNode.get("tags");
-                    }
-
-                    if (tagsNode != null && tagsNode.isArray()) {
-                        logger.info("Found tags array with {} elements", tagsNode.size());
-
-                        // If searching for a specific tag name
-                        if (searchTagName != null && !searchTagName.isEmpty()) {
-                            String foundTagName = null;
-                            for (JsonNode tag : tagsNode) {
-                                JsonNode nameNode = tag.get("tagName");
-                                if (nameNode != null) {
-                                    String tagName = nameNode.asText();
-                                    // Case-insensitive comparison
-                                    if (tagName.equalsIgnoreCase(searchTagName)) {
-                                        foundTagName = tagName; // Use exact case from database
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Build response for specific tag search
-                            Map<String, Object> searchResponse = new HashMap<>();
-                            searchResponse.put("exists", foundTagName != null);
-                            if (foundTagName != null) {
-                                searchResponse.put("tagName", foundTagName);
-                                searchResponse.put("total", 1);
-                                List<String> matchingTags = new ArrayList<>();
-                                matchingTags.add(foundTagName);
-                                searchResponse.put("tagNames", matchingTags);
-                            } else {
-                                searchResponse.put("total", 0);
-                                searchResponse.put("tagNames", new ArrayList<>());
-                            }
-
-                            logger.info("Tag '{}' exists: {}", searchTagName, foundTagName != null);
-                            return mapper.writeValueAsString(searchResponse);
-                        }
-
-                        // No filter - return all tag names
-                        List<String> tagNames = new ArrayList<>();
-                        tagsNode.forEach(tag -> {
-                            JsonNode nameNode = tag.get("tagName");
-                            if (nameNode != null) {
-                                tagNames.add(nameNode.asText());
-                            }
-                        });
-
-                        // Build summary response
-                        Map<String, Object> summaryResponse = new HashMap<>();
-                        summaryResponse.put("total", tagNames.size());
-                        summaryResponse.put("tagNames", tagNames);
-
-                        logger.info("Returning summary of {} tags", tagNames.size());
-
-                        return mapper.writeValueAsString(summaryResponse);
-                    } else {
-                        logger.warn("tagsNode is null or not an array: tagsNode={}", tagsNode);
-                    }
-                } catch (Exception e) {
-                    logger.warn("Failed to parse tags for summary, returning raw response", e);
-                    return response;
-                }
-            } else {
-                logger.warn("Response is null");
+            ObjectMapper mapper = new ObjectMapper();
+            TextellentPagedListMerger.MergeOrRaw outcome = TextellentPagedListMerger.mergeAllRowsOrRaw(
+                    mapper,
+                    logger,
+                    "tags_get_summary",
+                    pageNum -> fetchTagsListPage(pageNum, authCode, partnerClientCode),
+                    TextellentPagedListMerger::parseTagsListPage,
+                    TextellentPagedListMerger.DEFAULT_MAX_PAGES
+            );
+            if (outcome.rawFirstPageIfUnparsed != null) {
+                return outcome.rawFirstPageIfUnparsed;
+            }
+            if (outcome.merged == null) {
+                return null;
             }
 
-            // Should not reach here
-            logger.warn("No valid tags array found in response, returning raw");
-            return response;
+            List<String> tagNames = new ArrayList<>();
+            for (Map<String, Object> tag : outcome.merged) {
+                Object name = tag.get("tagName");
+                if (name != null) {
+                    tagNames.add(name.toString());
+                }
+            }
+
+            if (searchTagName != null && !searchTagName.isEmpty()) {
+                String foundTagName = null;
+                for (String tagName : tagNames) {
+                    if (tagName.equalsIgnoreCase(searchTagName)) {
+                        foundTagName = tagName;
+                        break;
+                    }
+                }
+                Map<String, Object> searchResponse = new HashMap<>();
+                searchResponse.put("exists", foundTagName != null);
+                if (foundTagName != null) {
+                    searchResponse.put("tagName", foundTagName);
+                    searchResponse.put("total", 1);
+                    searchResponse.put("tagNames", Collections.singletonList(foundTagName));
+                } else {
+                    searchResponse.put("total", 0);
+                    searchResponse.put("tagNames", new ArrayList<>());
+                }
+                logger.info("Tag '{}' exists: {}", searchTagName, foundTagName != null);
+                return mapper.writeValueAsString(searchResponse);
+            }
+
+            Map<String, Object> summaryResponse = new HashMap<>();
+            summaryResponse.put("total", tagNames.size());
+            summaryResponse.put("tagNames", tagNames);
+            logger.info("Returning summary of {} tags (merged pages)", tagNames.size());
+            return mapper.writeValueAsString(summaryResponse);
         } catch (Exception e) {
             logger.error("Failed to get tags summary", e);
             throw new RuntimeException("Failed to get tags summary: " + e.getMessage(), e);
