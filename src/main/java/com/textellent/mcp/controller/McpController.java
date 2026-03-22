@@ -479,17 +479,24 @@ public class McpController {
                 logger.warn("No tool definitions loaded – check that schemas/*.json exist and load correctly");
             }
 
-            // Expose all tools via tools/list; clients use safety metadata + scopes to decide how to call them.
-            List<McpToolDefinition> filteredTools = allTools;
+            // List every tool the token may use inside DSL plans so clients can discover names and inputSchema.
+            // Direct invocation remains restricted to ALLOWED_ORCHESTRATION_TOOLS in tools/call.
+            Set<String> userScopes = extractScopes(authentication);
+            List<McpToolDefinition> listedTools = allTools.stream()
+                .filter(t -> hasRequiredScope(t, userScopes))
+                .sorted(Comparator
+                    .comparing((McpToolDefinition t) -> !"dsl_execute_plan".equals(t.getName()))
+                    .thenComparing(McpToolDefinition::getName, String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList());
 
-            logger.debug("Filtered tools count: {}", filteredTools.size());
+            logger.debug("Listed tools count (scope-filtered): {}", listedTools.size());
 
             // Categorize tools by safety
             Map<String, List<McpToolDefinition>> categorizedTools = new HashMap<>();
-            List<McpToolDefinition> readOnlyTools = filteredTools.stream()
+            List<McpToolDefinition> readOnlyTools = listedTools.stream()
                 .filter(t -> Boolean.TRUE.equals(t.getReadOnly()))
                 .collect(Collectors.toList());
-            List<McpToolDefinition> writeTools = filteredTools.stream()
+            List<McpToolDefinition> writeTools = listedTools.stream()
                 .filter(t -> !Boolean.TRUE.equals(t.getReadOnly()))
                 .collect(Collectors.toList());
 
@@ -497,9 +504,9 @@ public class McpController {
             categorizedTools.put("write", writeTools);
 
             Map<String, Object> result = new HashMap<>();
-            result.put("tools", filteredTools);
+            result.put("tools", listedTools);
             result.put("categorized", categorizedTools);
-            result.put("totalCount", filteredTools.size());
+            result.put("totalCount", listedTools.size());
 
             McpRpcResponse response = new McpRpcResponse(request.getId(), result);
             return ResponseEntity.ok()
@@ -521,7 +528,19 @@ public class McpController {
     private ResponseEntity<McpRpcResponse> handleResourcesList(McpRpcRequest request) {
         logger.info("Handling resources/list request");
         try {
-            List<Map<String, Object>> resources = actionListService.listResultResources();
+            List<Map<String, Object>> resources = new ArrayList<>();
+
+            // Dynamic large-result resources from batch_action (legacy)
+            resources.addAll(actionListService.listResultResources());
+
+            // Static orchestration DSL spec resource
+            Map<String, Object> dslSpec = new HashMap<>();
+            dslSpec.put("uri", "mcp-dsl://orchestration-spec/v1");
+            dslSpec.put("name", "MCP Orchestration DSL Spec v1");
+            dslSpec.put("description", "JSON-based DSL specification for planning multi-step Textellent workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
+            dslSpec.put("mimeType", "application/json");
+            resources.add(dslSpec);
+
             Map<String, Object> result = new HashMap<>();
             result.put("resources", resources);
             McpRpcResponse response = new McpRpcResponse(request.getId(), result);
@@ -547,7 +566,26 @@ public class McpController {
             if (uri == null || uri.trim().isEmpty()) {
                 return createErrorResponse(request.getId(), -32602, "Params.uri is required");
             }
-            String content = actionListService.readResultResource(uri.trim());
+            String trimmedUri = uri.trim();
+
+            // Static DSL spec resource
+            if ("mcp-dsl://orchestration-spec/v1".equals(trimmedUri)) {
+                Map<String, Object> spec = objectMapper.readValue(
+                    this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v1.json"),
+                    Map.class
+                );
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("uri", trimmedUri);
+                contentItem.put("mimeType", "application/json");
+                contentItem.put("text", objectMapper.writeValueAsString(spec));
+                Map<String, Object> result = new HashMap<>();
+                result.put("contents", Collections.singletonList(contentItem));
+                McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+                return ResponseEntity.ok(response);
+            }
+
+            // Dynamic large-result resources
+            String content = actionListService.readResultResource(trimmedUri);
             if (content == null) {
                 return createErrorResponse(request.getId(), -32602, "Resource not found or already released: " + uri);
             }
@@ -565,9 +603,14 @@ public class McpController {
         }
     }
 
+    /** Tool names that may be called directly via tools/call. All other tools are only invokable via the orchestrator (dsl_execute_plan). */
+    private static final Set<String> ALLOWED_ORCHESTRATION_TOOLS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "dsl_execute_plan"
+    )));
+
     /**
      * Handle tools/call method - executes a specific tool with scope enforcement.
-     * All registered tools may now be called directly (subject to scopes and rate limits).
+     * Only orchestration tools may be called directly; all other operations must go through dsl_execute_plan.
      */
     private ResponseEntity<McpRpcResponse> handleToolsCall(
             McpRpcRequest request, String authCode, String partnerClientCode, Authentication authentication) {
@@ -586,6 +629,13 @@ public class McpController {
 
             if (toolName == null) {
                 return createErrorResponse(request.getId(), -32602, "Tool name is required");
+            }
+
+            // Restrict direct calls to orchestration tools only; primitives are only used inside DSL plans.
+            if (!ALLOWED_ORCHESTRATION_TOOLS.contains(toolName)) {
+                auditLogService.logFailure(toolName, arguments, "Tool not allowed for direct call");
+                return createErrorResponse(request.getId(), -32602,
+                    "Only orchestration tools can be called directly. Use dsl_execute_plan with a plan that includes the desired operations. Tool '" + toolName + "' is not in the allowed list.");
             }
 
             // Check if tool exists

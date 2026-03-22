@@ -28,6 +28,25 @@ public class McpToolRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolRegistry.class);
 
+    /** Prepended to tool description for primitives (also declared per-schema as x-textellent-mcp). */
+    private static final String DSL_STEP_ONLY_TOOL_DESCRIPTION_PREFIX =
+        "MCP invocation policy (required): Do not call this tool with MCP tools/call. "
+            + "It appears in tools/list only for discovery (this tool's name and inputSchema). "
+            + "Run it only as a step inside a plan submitted to dsl_execute_plan (use this tool's name as the step `tool` field).\n\n";
+
+    private static final String DIRECT_ORCHESTRATOR_TOOL_DESCRIPTION_PREFIX =
+        "MCP invocation policy (required): This is the only tool you may invoke via MCP tools/call. "
+            + "Every other tool in tools/list is dsl_step_only: use those names only inside the plan you pass here.\n\n";
+
+    private static final String INPUT_SCHEMA_DSL_STEP_NOTE =
+        "MCP (required): These properties are step arguments inside dsl_execute_plan only—not a standalone tools/call payload.";
+
+    private static final String INPUT_SCHEMA_DIRECT_ORCHESTRATOR_NOTE =
+        "MCP (required): This object is the arguments map for tools/call when the tool name is dsl_execute_plan.";
+
+    private static final String OUTPUT_SCHEMA_DSL_STEP_NOTE =
+        "MCP: Response shape when this primitive is executed as a dsl_execute_plan step (never from tools/call).";
+
     private final Map<String, McpToolHandler> handlers = new HashMap<>();
     private final Map<String, McpToolDefinition> toolDefinitions = new HashMap<>();
     private final Map<String, Schema> schemas = new HashMap<>();
@@ -36,7 +55,7 @@ public class McpToolRegistry {
     private MessageApiService messageApiService;
 
     @Autowired
-    private com.textellent.mcp.services.ActionListService actionListService;
+    private com.textellent.mcp.services.DslOrchestrationService dslOrchestrationService;
 
     @Autowired
     private ContactApiService contactApiService;
@@ -66,11 +85,10 @@ public class McpToolRegistry {
      * Register all MCP tools with their handlers.
      */
     private void registerAllTools() {
-        // Batch action / planner tools
-        registerTool("batch_action", actionListService::setActionList);
-        registerTool("release_resource", actionListService::releaseResource);
+        // Orchestration: exposed for direct tools/call. Primitives appear in tools/list for DSL discovery but are only invokable inside dsl_execute_plan (see McpController).
+        registerTool("dsl_execute_plan", dslOrchestrationService::executePlan);
 
-        // Message tools
+        // Message tools (invoked only by orchestrator when executing DSL plans)
         registerTool("messages_send", messageApiService::sendMessage);
 
         // Contact tools
@@ -98,18 +116,29 @@ public class McpToolRegistry {
         registerTool("appointments_update", appointmentApiService::updateAppointment);
         registerTool("appointments_cancel", appointmentApiService::cancelAppointment);
 
-        // Callback event tools
-        registerTool("events_phone_added_wrong_number", callbackEventApiService::getPhoneNumberAddedToWrongNumber);
-        registerTool("events_outgoing_delivery_status", callbackEventApiService::getOutgoingMessageDeliveryStatus);
-        registerTool("events_new_contact_details", callbackEventApiService::getNewContactDetails);
-        registerTool("events_disassociate_contact_tag", callbackEventApiService::getDisassociateContactFromTag);
-        registerTool("events_incoming_message", callbackEventApiService::getIncomingMessageDetail);
-        registerTool("events_phone_added_dnt", callbackEventApiService::getPhoneNumberAddedToDNT);
-        registerTool("events_associate_contact_tag", callbackEventApiService::getAssociateContactToTag);
-        registerTool("events_appointment_created", callbackEventApiService::getAppointmentCreated);
-        registerTool("events_appointment_updated", callbackEventApiService::getAppointmentUpdated);
-        registerTool("events_appointment_canceled", callbackEventApiService::getAppointmentCanceled);
-        registerTool("events_phone_removed_dnt", callbackEventApiService::getPhoneNumberRemovedFromDNT);
+        // Callback event tools (single fetchPagedEvents implementation; paths registered here)
+        registerTool("events_phone_added_wrong_number", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToWrongNumber.json", args, ac, pc));
+        registerTool("events_outgoing_delivery_status", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/outgoingMessageDeliveryStatus.json", args, ac, pc));
+        registerTool("events_new_contact_details", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/newContactDetails.json", args, ac, pc));
+        registerTool("events_disassociate_contact_tag", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/disassociateContactFromTag.json", args, ac, pc));
+        registerTool("events_incoming_message", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/incomingMessageDetail.json", args, ac, pc));
+        registerTool("events_phone_added_dnt", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToDNT.json", args, ac, pc));
+        registerTool("events_associate_contact_tag", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/associateContactToTag.json", args, ac, pc));
+        registerTool("events_appointment_created", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentCreated.json", args, ac, pc));
+        registerTool("events_appointment_updated", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentUpdated.json", args, ac, pc));
+        registerTool("events_appointment_canceled", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentCanceled.json", args, ac, pc));
+        registerTool("events_phone_removed_dnt", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberRemovedFromDNT.json", args, ac, pc));
 
         // Configuration tools
         registerTool("webhook_subscribe", configurationApiService::webhookSubscribe);
@@ -129,6 +158,7 @@ public class McpToolRegistry {
     /**
      * Load all tool schemas from resources/schemas directory.
      */
+    @SuppressWarnings("unchecked")
     private void loadToolSchemas() {
         try {
             PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
@@ -140,24 +170,39 @@ public class McpToolRegistry {
                     if (filename != null) {
                         String toolName = filename.replace(".json", "");
 
-                        // Read the schema file as a map
                         Map<String, Object> schemaMap = objectMapper.readValue(is, new TypeReference<Map<String, Object>>() {});
 
-                        // Create tool definition
+                        Map<String, Object> inputSchema = (Map<String, Object>) schemaMap.get("inputSchema");
+                        Map<String, Object> outputSchema = (Map<String, Object>) schemaMap.get("outputSchema");
+
+                        boolean mustBeDirect = "dsl_execute_plan".equals(toolName);
+                        Map<String, Object> xTextellentMcp = resolveTextellentMcpExtension(toolName, schemaMap, mustBeDirect);
+
+                        boolean directToolsCall = Boolean.TRUE.equals(xTextellentMcp.get("directToolsCall"));
+                        if (directToolsCall) {
+                            prependRootSchemaDescription(inputSchema, INPUT_SCHEMA_DIRECT_ORCHESTRATOR_NOTE);
+                        } else {
+                            prependRootSchemaDescription(inputSchema, INPUT_SCHEMA_DSL_STEP_NOTE);
+                            prependRootSchemaDescription(outputSchema, OUTPUT_SCHEMA_DSL_STEP_NOTE);
+                        }
+
+                        String baseDescription = (String) schemaMap.get("description");
+                        String fullDescription = (directToolsCall ? DIRECT_ORCHESTRATOR_TOOL_DESCRIPTION_PREFIX : DSL_STEP_ONLY_TOOL_DESCRIPTION_PREFIX)
+                            + (baseDescription != null ? baseDescription : "");
+
                         McpToolDefinition toolDef = new McpToolDefinition();
                         toolDef.setName(toolName);
-                        toolDef.setDescription((String) schemaMap.get("description"));
-                        toolDef.setInputSchema((Map<String, Object>) schemaMap.get("inputSchema"));
-                        toolDef.setOutputSchema((Map<String, Object>) schemaMap.get("outputSchema"));
+                        toolDef.setDescription(fullDescription);
+                        toolDef.setInputSchema(inputSchema);
+                        toolDef.setOutputSchema(outputSchema);
+                        toolDef.setTextellentMcp(xTextellentMcp);
 
-                        // Set safety metadata based on tool type
                         configureSafetyMetadata(toolName, toolDef);
 
                         toolDefinitions.put(toolName, toolDef);
 
-                        // Load JSON schema validator for input validation
-                        if (schemaMap.containsKey("inputSchema")) {
-                            JSONObject jsonSchema = new JSONObject(schemaMap.get("inputSchema"));
+                        if (inputSchema != null) {
+                            JSONObject jsonSchema = new JSONObject(inputSchema);
                             Schema schema = SchemaLoader.load(jsonSchema);
                             schemas.put(toolName, schema);
                         }
@@ -173,6 +218,56 @@ public class McpToolRegistry {
         } catch (IOException e) {
             logger.error("Failed to load tool schemas", e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveTextellentMcpExtension(String toolName, Map<String, Object> schemaMap, boolean mustBeDirect) {
+        Map<String, Object> xtm = (Map<String, Object>) schemaMap.get("x-textellent-mcp");
+        if (xtm == null) {
+            logger.warn("Schema file for tool '{}' is missing x-textellent-mcp; add it to the JSON schema for explicit MCP policy.", toolName);
+            xtm = new LinkedHashMap<>();
+        } else {
+            xtm = new LinkedHashMap<>(xtm);
+        }
+
+        Object rawDirect = xtm.get("directToolsCall");
+        boolean directToolsCall;
+        if (rawDirect instanceof Boolean) {
+            directToolsCall = (Boolean) rawDirect;
+        } else {
+            directToolsCall = mustBeDirect;
+            if (rawDirect != null) {
+                logger.warn("Tool '{}' x-textellent-mcp.directToolsCall must be a boolean; coercing to {}", toolName, mustBeDirect);
+            }
+        }
+
+        if (directToolsCall != mustBeDirect) {
+            logger.warn("Tool '{}' x-textellent-mcp.directToolsCall={} conflicts with server policy (expected {}); enforcing policy.",
+                toolName, directToolsCall, mustBeDirect);
+            directToolsCall = mustBeDirect;
+        }
+
+        xtm.put("directToolsCall", directToolsCall);
+        xtm.put("invocation", directToolsCall ? "direct_tools_call" : "dsl_step_only");
+        return Collections.unmodifiableMap(xtm);
+    }
+
+    private void prependRootSchemaDescription(Map<String, Object> schemaRoot, String mcpNote) {
+        if (schemaRoot == null || mcpNote == null) {
+            return;
+        }
+        Object existing = schemaRoot.get("description");
+        if (existing instanceof String) {
+            String str = (String) existing;
+            if (!str.isEmpty()) {
+                if (str.startsWith(mcpNote)) {
+                    return;
+                }
+                schemaRoot.put("description", mcpNote + " " + str);
+                return;
+            }
+        }
+        schemaRoot.put("description", mcpNote);
     }
 
     /**
@@ -249,8 +344,8 @@ public class McpToolRegistry {
             toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
         }
 
-        // Orchestration helpers: do not require scopes (discovery + orchestration only)
-        if ("batch_action".equals(toolName) || "release_resource".equals(toolName)) {
+        // Orchestration tool: no scope required for plan submission
+        if ("dsl_execute_plan".equals(toolName)) {
             toolDef.setRequiredScope(null);
         }
     }
