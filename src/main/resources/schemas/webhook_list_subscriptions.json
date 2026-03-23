@@ -1,5 +1,5 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. List all webhook subscriptions. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use the `batch_action` tool instead.",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. List all webhook subscriptions. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use `dsl_execute_plan` with a multi-step plan instead.",
   "x-textellent-mcp": {
     "directToolsCall": false,
     "invocation": "dsl_step_only"

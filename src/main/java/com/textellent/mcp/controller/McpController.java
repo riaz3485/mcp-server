@@ -6,7 +6,6 @@ import com.textellent.mcp.models.*;
 import com.textellent.mcp.ratelimit.RateLimitService;
 import com.textellent.mcp.registry.McpToolRegistry;
 import com.textellent.mcp.security.JwtClaimsExtractor;
-import com.textellent.mcp.services.ActionListService;
 import com.textellent.mcp.sse.SseSessionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +15,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -40,9 +38,6 @@ public class McpController {
 
     @Autowired
     private McpToolRegistry toolRegistry;
-
-    @Autowired
-    private ActionListService actionListService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -522,16 +517,13 @@ public class McpController {
     }
 
     /**
-     * Handle resources/list - list large execution results exposed as MCP resources (searchable context, no context rot).
+     * Handle resources/list - currently exposes only static resources.
      * No caching: responses are always fresh.
      */
     private ResponseEntity<McpRpcResponse> handleResourcesList(McpRpcRequest request) {
         logger.info("Handling resources/list request");
         try {
             List<Map<String, Object>> resources = new ArrayList<>();
-
-            // Dynamic large-result resources from batch_action (legacy)
-            resources.addAll(actionListService.listResultResources());
 
             // Static orchestration DSL spec resource
             Map<String, Object> dslSpec = new HashMap<>();
@@ -556,7 +548,7 @@ public class McpController {
     }
 
     /**
-     * Handle resources/read - read a large result resource by URI. Resource remains until release_resource is called.
+     * Handle resources/read - read a static resource by URI.
      */
     private ResponseEntity<McpRpcResponse> handleResourcesRead(McpRpcRequest request) {
         logger.info("Handling resources/read request");
@@ -584,19 +576,7 @@ public class McpController {
                 return ResponseEntity.ok(response);
             }
 
-            // Dynamic large-result resources
-            String content = actionListService.readResultResource(trimmedUri);
-            if (content == null) {
-                return createErrorResponse(request.getId(), -32602, "Resource not found or already released: " + uri);
-            }
-            Map<String, Object> contentItem = new HashMap<>();
-            contentItem.put("uri", uri);
-            contentItem.put("mimeType", "application/json");
-            contentItem.put("text", content);
-            Map<String, Object> result = new HashMap<>();
-            result.put("contents", Collections.singletonList(contentItem));
-            McpRpcResponse response = new McpRpcResponse(request.getId(), result);
-            return ResponseEntity.ok(response);
+            return createErrorResponse(request.getId(), -32602, "Resource not found: " + uri);
         } catch (Exception e) {
             logger.error("Error reading resource", e);
             return createErrorResponse(request.getId(), -32603, "Failed to read resource: " + e.getMessage());
@@ -759,14 +739,11 @@ public class McpController {
                 }
             }
 
-            // Wrap large results as MCP resources when necessary (applies to all tools)
-            Object maybeWrapped = actionListService.wrapLargeResultIfNeeded(dataToReturn);
-
             // Format response according to MCP protocol
             List<Map<String, Object>> contentArray = new ArrayList<>();
             Map<String, Object> contentItem = new HashMap<>();
             contentItem.put("type", "text");
-            contentItem.put("text", objectMapper.writeValueAsString(maybeWrapped));
+            contentItem.put("text", objectMapper.writeValueAsString(dataToReturn));
             contentArray.add(contentItem);
 
             Map<String, Object> resultMap = new HashMap<>();
