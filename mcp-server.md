@@ -34,7 +34,7 @@ Built a complete standalone Spring Boot MCP (Model Context Protocol) Server that
 - **Comprehensive README** with examples
 - **.gitignore** for version control
 
-### API Coverage (32 Tools Total)
+### API Coverage (26 Tools Total)
 
 #### Messages (1 tool)
 - `messages_send` - Send SMS/MMS
@@ -57,12 +57,7 @@ Built a complete standalone Spring Boot MCP (Model Context Protocol) Server that
 - `tags_delete` - Delete a tag
 - `tags_remove_contacts` - Remove contacts from a tag
 
-#### Appointments (3 tools)
-- `appointments_create` - Create an appointment
-- `appointments_update` - Update an appointment
-- `appointments_cancel` - Cancel an appointment
-
-#### Callback Events (11 tools)
+#### Callback Events (8 tools)
 - `events_phone_added_wrong_number` - Get wrong number events
 - `events_outgoing_delivery_status` - Get delivery status events
 - `events_new_contact_details` - Get new contact events
@@ -70,9 +65,6 @@ Built a complete standalone Spring Boot MCP (Model Context Protocol) Server that
 - `events_incoming_message` - Get incoming message events
 - `events_phone_added_dnt` - Get DNT add events
 - `events_associate_contact_tag` - Get associate events
-- `events_appointment_created` - Get appointment created events
-- `events_appointment_updated` - Get appointment updated events
-- `events_appointment_canceled` - Get appointment canceled events
 - `events_phone_removed_dnt` - Get DNT removal events
 
 #### Configuration (3 tools)
@@ -105,7 +97,6 @@ mcp-server/
     │   │   │   ├── MessageApiService.java
     │   │   │   ├── ContactApiService.java
     │   │   │   ├── TagApiService.java
-    │   │   │   ├── AppointmentApiService.java
     │   │   │   ├── CallbackEventApiService.java
     │   │   │   └── ConfigurationApiService.java
     │   │   ├── config/
@@ -131,9 +122,6 @@ mcp-server/
     │           ├── tags_assign_contacts.json
     │           ├── tags_delete.json
     │           ├── tags_remove_contacts.json
-    │           ├── appointments_create.json
-    │           ├── appointments_update.json
-    │           ├── appointments_cancel.json
     │           ├── events_phone_added_wrong_number.json
     │           ├── events_outgoing_delivery_status.json
     │           ├── events_new_contact_details.json
@@ -141,9 +129,6 @@ mcp-server/
     │           ├── events_incoming_message.json
     │           ├── events_phone_added_dnt.json
     │           ├── events_associate_contact_tag.json
-    │           ├── events_appointment_created.json
-    │           ├── events_appointment_updated.json
-    │           ├── events_appointment_canceled.json
     │           ├── events_phone_removed_dnt.json
     │           ├── webhook_subscribe.json
     │           ├── webhook_unsubscribe.json
@@ -166,12 +151,11 @@ mcp-server/
 - Returns 32 tool definitions
 
 ### 3. Service Layer
-Six service classes calling Textellent REST endpoints:
+Five service classes calling Textellent REST endpoints:
 - `MessageApiService.java` - 1 message endpoint
 - `ContactApiService.java` - 7 contact endpoints
 - `TagApiService.java` - 7 tag endpoints
-- `AppointmentApiService.java` - 3 appointment endpoints
-- `CallbackEventApiService.java` - 11 event endpoints
+- `CallbackEventApiService.java` - 8 event endpoints
 - `ConfigurationApiService.java` - 3 webhook endpoints
 
 ### 4. Configuration
@@ -226,7 +210,7 @@ POST /mcp
 ```
 
 Supported methods:
-- `tools/list` - Returns all 32 tool definitions
+- `tools/list` - Returns all 26 tool definitions
 - `tools/call` - Executes a specific tool
 
 ## Example Usage
@@ -372,7 +356,7 @@ This server is designed to work with AI agents like Claude Desktop:
 ## Success Criteria Met
 
 ✅ Complete standalone Spring Boot project
-✅ All 32 Textellent API endpoints exposed as MCP tools
+✅ All 26 Textellent API endpoints exposed as MCP tools
 ✅ JSON-RPC 2.0 compliant implementation
 ✅ Production-grade code (no placeholders)
 ✅ Full JSON schema validation
@@ -586,7 +570,7 @@ Textellent REST API Backend (localhost:8080)
 ✅ Extension installs successfully in Claude Desktop
 ✅ MCP server shows "running" status
 ✅ Initialize handshake completes successfully
-✅ All 32 tools discovered and listed
+✅ All 26 tools discovered and listed
 ✅ Tools execute successfully with auth code
 ✅ Contact queries return properly formatted data
 ✅ Response format is MCP-compliant
@@ -594,7 +578,7 @@ Textellent REST API Backend (localhost:8080)
 ### Current Server Status
 
 **Running:** localhost:9090
-**Tools Registered:** 32
+**Tools Registered:** 26
 **Status:** UP
 **Extension Status:** Running in Claude Desktop
 **Auth:** Configured (hardcoded fallback)

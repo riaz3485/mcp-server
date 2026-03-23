@@ -52,9 +52,6 @@ public class McpToolRegistry {
     private TagApiService tagApiService;
 
     @Autowired
-    private AppointmentApiService appointmentApiService;
-
-    @Autowired
     private CallbackEventApiService callbackEventApiService;
 
     @Autowired
@@ -103,23 +100,23 @@ public class McpToolRegistry {
         registerTool("tags_delete", tagApiService::deleteTag);
         registerTool("tags_remove_contacts", tagApiService::removeContactsFromTag);
 
-        // Appointment tools
-        registerTool("appointments_create", appointmentApiService::createAppointment);
-        registerTool("appointments_update", appointmentApiService::updateAppointment);
-        registerTool("appointments_cancel", appointmentApiService::cancelAppointment);
-
-        // Callback event tools
-        registerTool("events_phone_added_wrong_number", callbackEventApiService::getPhoneNumberAddedToWrongNumber);
-        registerTool("events_outgoing_delivery_status", callbackEventApiService::getOutgoingMessageDeliveryStatus);
-        registerTool("events_new_contact_details", callbackEventApiService::getNewContactDetails);
-        registerTool("events_disassociate_contact_tag", callbackEventApiService::getDisassociateContactFromTag);
-        registerTool("events_incoming_message", callbackEventApiService::getIncomingMessageDetail);
-        registerTool("events_phone_added_dnt", callbackEventApiService::getPhoneNumberAddedToDNT);
-        registerTool("events_associate_contact_tag", callbackEventApiService::getAssociateContactToTag);
-        registerTool("events_appointment_created", callbackEventApiService::getAppointmentCreated);
-        registerTool("events_appointment_updated", callbackEventApiService::getAppointmentUpdated);
-        registerTool("events_appointment_canceled", callbackEventApiService::getAppointmentCanceled);
-        registerTool("events_phone_removed_dnt", callbackEventApiService::getPhoneNumberRemovedFromDNT);
+        // Callback event tools (single fetchPagedEvents implementation; paths registered here)
+        registerTool("events_phone_added_wrong_number", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToWrongNumber.json", args, ac, pc));
+        registerTool("events_outgoing_delivery_status", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/outgoingMessageDeliveryStatus.json", args, ac, pc));
+        registerTool("events_new_contact_details", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/newContactDetails.json", args, ac, pc));
+        registerTool("events_disassociate_contact_tag", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/disassociateContactFromTag.json", args, ac, pc));
+        registerTool("events_incoming_message", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/incomingMessageDetail.json", args, ac, pc));
+        registerTool("events_phone_added_dnt", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToDNT.json", args, ac, pc));
+        registerTool("events_associate_contact_tag", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/associateContactToTag.json", args, ac, pc));
+        registerTool("events_phone_removed_dnt", (args, ac, pc) ->
+                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberRemovedFromDNT.json", args, ac, pc));
 
         // Configuration tools
         registerTool("webhook_subscribe", configurationApiService::webhookSubscribe);
