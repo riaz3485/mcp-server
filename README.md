@@ -7,7 +7,7 @@ Designed for deployment as a **public, remote MCP connector** compatible with Cl
 ## Features
 
 ### Core Capabilities
-- **32 MCP Tools** exposing Textellent's complete API surface
+- **26 MCP Tools** exposing Textellent's current API surface
 - **MCP Protocol 2025-06-18** compliant implementation
 - **Streamable HTTP Transport** with JSON-RPC 2.0
 - **SSE Support** for streaming events (optional)
@@ -201,7 +201,7 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
 - `dsl_execute_plan` - Execute a JSON-based orchestration plan (**read/write/destructive**, depending on nested tools). This is the only tool clients should call via `tools/call`.
 
 ### DSL primitives (discovery + plans only)
-Contacts, tags, messages, appointments, events, and configuration tools appear in `tools/list` so agents know exact `name` values and `inputSchema` for plan steps. They are **not** callable via `tools/call`; reference them inside `dsl_execute_plan`. Each tool schema file and `tools/list` entry includes `x-textellent-mcp` (`directToolsCall: false`, `invocation: dsl_step_only`) plus the same policy in the tool description and root `inputSchema`/`outputSchema` descriptions (applied at load time).
+Contacts, tags, messages, events, and configuration tools appear in `tools/list` so agents know exact `name` values and `inputSchema` for plan steps. They are **not** callable via `tools/call`; reference them inside `dsl_execute_plan`. Each tool schema file and `tools/list` entry includes `x-textellent-mcp` (`directToolsCall: false`, `invocation: dsl_step_only`) plus the same policy in the tool description and root `inputSchema`/`outputSchema` descriptions (applied at load time).
 
 ## Security Configuration
 
@@ -317,7 +317,7 @@ Response includes categorized tools:
       "readOnly": [...],
       "write": [...]
     },
-    "totalCount": 32
+    "totalCount": 26
   }
 }
 ```
