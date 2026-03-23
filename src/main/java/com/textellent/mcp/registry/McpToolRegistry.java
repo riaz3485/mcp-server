@@ -55,7 +55,7 @@ public class McpToolRegistry {
     private MessageApiService messageApiService;
 
     @Autowired
-    private com.textellent.mcp.services.DslOrchestrationService dslOrchestrationService;
+    private com.textellent.mcp.services.dsl.OrchestrationDslEngine orchestrationDslEngine;
 
     @Autowired
     private ContactApiService contactApiService;
@@ -83,7 +83,7 @@ public class McpToolRegistry {
      */
     private void registerAllTools() {
         // Orchestration: exposed for direct tools/call. Primitives appear in tools/list for DSL discovery but are only invokable inside dsl_execute_plan (see McpController).
-        registerTool("dsl_execute_plan", dslOrchestrationService::executePlan);
+        registerTool("dsl_execute_plan", orchestrationDslEngine::executePlan);
 
         // Message tools (invoked only by orchestrator when executing DSL plans)
         registerTool("messages_send", messageApiService::sendMessage);

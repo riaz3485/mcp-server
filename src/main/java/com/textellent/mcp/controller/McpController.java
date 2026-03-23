@@ -526,12 +526,19 @@ public class McpController {
             List<Map<String, Object>> resources = new ArrayList<>();
 
             // Static orchestration DSL spec resource
-            Map<String, Object> dslSpec = new HashMap<>();
-            dslSpec.put("uri", "mcp-dsl://orchestration-spec/v1");
-            dslSpec.put("name", "MCP Orchestration DSL Spec v1");
-            dslSpec.put("description", "JSON-based DSL specification for planning multi-step Textellent workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
-            dslSpec.put("mimeType", "application/json");
-            resources.add(dslSpec);
+            Map<String, Object> dslSpecV1 = new HashMap<>();
+            dslSpecV1.put("uri", "mcp-dsl://orchestration-spec/v1");
+            dslSpecV1.put("name", "MCP Orchestration DSL Spec v1");
+            dslSpecV1.put("description", "JSON-based DSL specification for planning multi-step Textellent workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
+            dslSpecV1.put("mimeType", "application/json");
+            resources.add(dslSpecV1);
+
+            Map<String, Object> dslSpecV2 = new HashMap<>();
+            dslSpecV2.put("uri", "mcp-dsl://orchestration-spec/v2");
+            dslSpecV2.put("name", "MCP Orchestration DSL Spec v2.0");
+            dslSpecV2.put("description", "Breaking DSL v2.0: typed pipeline, pure operators, audited effects. Use with plan.version 2.0 and plan.pipeline.");
+            dslSpecV2.put("mimeType", "application/json");
+            resources.add(dslSpecV2);
 
             Map<String, Object> result = new HashMap<>();
             result.put("resources", resources);
@@ -564,6 +571,20 @@ public class McpController {
             if ("mcp-dsl://orchestration-spec/v1".equals(trimmedUri)) {
                 Map<String, Object> spec = objectMapper.readValue(
                     this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v1.json"),
+                    Map.class
+                );
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("uri", trimmedUri);
+                contentItem.put("mimeType", "application/json");
+                contentItem.put("text", objectMapper.writeValueAsString(spec));
+                Map<String, Object> result = new HashMap<>();
+                result.put("contents", Collections.singletonList(contentItem));
+                McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+                return ResponseEntity.ok(response);
+            }
+            if ("mcp-dsl://orchestration-spec/v2".equals(trimmedUri)) {
+                Map<String, Object> spec = objectMapper.readValue(
+                    this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v2.json"),
                     Map.class
                 );
                 Map<String, Object> contentItem = new HashMap<>();

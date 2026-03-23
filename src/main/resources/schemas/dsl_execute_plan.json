@@ -13,7 +13,12 @@
         "properties": {
           "version": {
             "type": "string",
-            "description": "DSL version string. Supported: \"1.0\", \"1.1\"."
+            "description": "DSL version string. Supported: \"1.0\", \"1.1\", \"2.0\" (breaking: use pipeline only)."
+          },
+          "pipeline": {
+            "type": "object",
+            "description": "DSL v2.0 breaking form: typed pipeline (permissions, limits, initialState, stages). Required when version is 2.0; must not be combined with task or simplePlan.",
+            "additionalProperties": true
           },
           "task": {
             "type": "object",
@@ -672,6 +677,19 @@
             "type": "integer"
           }
         },
+        "additionalProperties": true
+      },
+      "dslVersion": {
+        "type": "string",
+        "description": "When plan.version is 2.0, set to \"2.0\"."
+      },
+      "previewReport": {
+        "type": "object",
+        "description": "Present when DSL v2.0 preview mode runs (arguments.preview=true)."
+      },
+      "executionPartition": {
+        "type": "object",
+        "description": "DSL v2.0 effectful batch outcome counts (A42).",
         "additionalProperties": true
       }
     }
