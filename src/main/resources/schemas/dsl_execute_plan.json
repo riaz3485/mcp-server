@@ -13,7 +13,7 @@
         "properties": {
           "version": {
             "type": "string",
-            "description": "DSL version string, e.g. \"1.0\"."
+            "description": "DSL version string. Supported: \"1.0\", \"1.1\"."
           },
           "task": {
             "type": "object",
@@ -233,6 +233,10 @@
                               },
                               "path": {
                                 "type": "string"
+                              },
+                              "literal": {
+                                "type": "array",
+                                "description": "Inline literal array source for batchLoop."
                               }
                             },
                             "additionalProperties": false
@@ -249,6 +253,14 @@
                                 "minimum": 1
                               },
                               "throttleMsBetweenBatches": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "minSize": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "resumeFromBatchIndex": {
                                 "type": "integer",
                                 "minimum": 0
                               }
@@ -356,7 +368,20 @@
                             }
                           },
                           "operation": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "length",
+                              "literal",
+                              "pick",
+                              "math",
+                              "map",
+                              "filter",
+                              "uniqueBy",
+                              "difference",
+                              "normalize",
+                              "sort",
+                              "parseCsv"
+                            ]
                           },
                           "targetVar": {
                             "type": "string"
@@ -370,7 +395,14 @@
                                   "length",
                                   "literal",
                                   "pick",
-                                  "math"
+                                  "math",
+                                  "map",
+                                  "filter",
+                                  "uniqueBy",
+                                  "difference",
+                                  "normalize",
+                                  "sort",
+                                  "parseCsv"
                                 ]
                               }
                             },
@@ -617,6 +649,30 @@
       "lastError": {
         "type": "string",
         "description": "Last execution error message, if any."
+      },
+      "batchSummary": {
+        "type": "object",
+        "properties": {
+          "createdCount": {
+            "type": "integer"
+          },
+          "skippedCount": {
+            "type": "integer"
+          },
+          "duplicateCount": {
+            "type": "integer"
+          },
+          "failedItems": {
+            "type": "array"
+          },
+          "nextRecommendedBatchSize": {
+            "type": "integer"
+          },
+          "lastSuccessfulBatchIndex": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
       }
     }
   }

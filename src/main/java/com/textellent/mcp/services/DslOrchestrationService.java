@@ -22,6 +22,8 @@ import java.util.*;
 public class DslOrchestrationService {
 
     private static final Logger logger = LoggerFactory.getLogger(DslOrchestrationService.class);
+    private static final Set<String> SUPPORTED_DSL_VERSIONS =
+            Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList("1.0", "1.1")));
 
     @Autowired
     private DslPlanValidator planValidator;
@@ -67,6 +69,15 @@ public class DslOrchestrationService {
             logger.warn("executePlan: plan.version missing or not string");
             result.put("status", "failed");
             result.put("validationErrors", Collections.singletonList("plan.version must be a string, e.g. \"1.0\"."));
+            result.put("vars", Collections.emptyMap());
+            return result;
+        }
+        String versionString = ((String) version).trim();
+        if (!SUPPORTED_DSL_VERSIONS.contains(versionString)) {
+            logger.warn("executePlan: unsupported DSL version={}", versionString);
+            result.put("status", "failed");
+            result.put("validationErrors",
+                    Collections.singletonList("Unsupported plan.version '" + versionString + "'. Supported versions: 1.0, 1.1."));
             result.put("vars", Collections.emptyMap());
             return result;
         }
@@ -116,6 +127,9 @@ public class DslOrchestrationService {
                     return result;
                 }
                 taskExecutor.execute(task, vars, authCode, partnerClientCode, result);
+            }
+            if (vars.containsKey("batchSummary")) {
+                result.put("batchSummary", vars.get("batchSummary"));
             }
         } catch (Exception e) {
             logger.error("executePlan: execution failed", e);

@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "title": "Textellent MCP Orchestration DSL",
   "description": "JSON-based DSL for planning and executing multi-step workflows via the dsl_execute_plan tool. This DSL lets you describe permissions, limits, phases, and steps (tool calls, waits, computations, and checkpoints) in a single plan that the orchestrator executes.",
   "usage": {
@@ -10,7 +10,7 @@
     ],
     "howToUse": [
       "Construct a JSON object with top-level keys: version and either task (full form) or simplePlan (linear form).",
-      "Wrap this object as the value of the `plan` property when calling the dsl_execute_plan tool.",
+      "Wrap this object as the value of the `plan` property when calling the dsl_execute_plan tool via MCP tools/call.",
       "For simple, unrelated operations, prefer simplePlan. For complex workflows or batching, use task/phases/steps."
     ]
   },
@@ -22,7 +22,7 @@
   },
   "examples": {
     "simplePlan": {
-      "version": "1.0",
+      "version": "1.1",
       "simplePlan": {
         "description": "List contacts, delete the first one, then list tags.",
         "permissions": {
@@ -75,7 +75,7 @@
       }
     },
     "taskDeleteTags": {
-      "version": "1.0",
+      "version": "1.1",
       "task": {
         "id": "clear_tags",
         "description": "Delete all tags in safe batches.",

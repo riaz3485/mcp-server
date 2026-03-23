@@ -16,8 +16,20 @@
         "description": "External ID"
       },
       "phoneNumbers": {
-        "type": "string",
-        "description": "Comma-separated list of phone numbers"
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Comma-separated list of phone numbers (legacy format, still supported)."
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Preferred v1.1 format: array of phone numbers."
+          }
+        ],
+        "description": "Phone numbers for bulk existence lookup."
       }
     },
     "required": [

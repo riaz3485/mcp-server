@@ -16,6 +16,11 @@ import java.util.*;
 public class DslPlanValidator {
 
     private static final Logger logger = LoggerFactory.getLogger(DslPlanValidator.class);
+    private static final Set<String> SUPPORTED_COMPUTE_OPERATIONS = Collections.unmodifiableSet(
+            new LinkedHashSet<String>(Arrays.asList(
+                    "length", "literal", "pick", "math", "map", "filter", "uniqueBy", "difference", "normalize", "sort", "parseCsv"
+            ))
+    );
 
     @Lazy
     private final McpToolRegistry toolRegistry;
@@ -130,8 +135,14 @@ public class DslPlanValidator {
                         errors.add("Phase " + phaseId + " step " + stepId + " (batchLoop) requires 'source' object.");
                     } else {
                         String fv = (String) src.get("fromVar");
-                        if (fv == null || fv.trim().isEmpty()) {
-                            errors.add("Phase " + phaseId + " step " + stepId + " (batchLoop) requires source.fromVar.");
+                        Object literal = src.get("literal");
+                        boolean hasFromVar = fv != null && !fv.trim().isEmpty();
+                        boolean hasLiteral = literal instanceof List;
+                        if (!hasFromVar && !hasLiteral) {
+                            errors.add("Phase " + phaseId + " step " + stepId + " (batchLoop) requires source.fromVar or source.literal(array).");
+                        }
+                        if (literal != null && !(literal instanceof List)) {
+                            errors.add("Phase " + phaseId + " step " + stepId + " (batchLoop) source.literal must be an array.");
                         }
                     }
                     Map<String, Object> body = step.get("bodyStep") instanceof Map
@@ -146,6 +157,18 @@ public class DslPlanValidator {
                         } else if (!toolRegistry.hasTool(bt)) {
                             errors.add("Phase " + phaseId + " step " + stepId + " (batchLoop) bodyStep references unknown tool '" + bt + "'.");
                         }
+                    }
+                }
+                if ("compute".equals(type)) {
+                    String operation = (String) step.get("operation");
+                    String targetVar = (String) step.get("targetVar");
+                    if (operation == null || operation.trim().isEmpty()) {
+                        errors.add("Phase " + phaseId + " step " + stepId + " (compute) is missing 'operation'.");
+                    } else if (!SUPPORTED_COMPUTE_OPERATIONS.contains(operation)) {
+                        errors.add("Phase " + phaseId + " step " + stepId + " (compute) uses unsupported operation '" + operation + "'.");
+                    }
+                    if (targetVar == null || targetVar.trim().isEmpty()) {
+                        errors.add("Phase " + phaseId + " step " + stepId + " (compute) is missing 'targetVar'.");
                     }
                 }
             }
