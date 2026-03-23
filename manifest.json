@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "textellent-mcp-server",
   "display_name": "Textellent MCP Server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for Textellent API - messaging, contacts, tags, and webhooks",
   "long_description": "A comprehensive Model Context Protocol (MCP) server that exposes Textellent API endpoints through 26 MCP tools. Enables AI agents to send messages, manage contacts, create tags, and configure webhooks using natural language.\n\nFeatures:\n- Send SMS/MMS messages\n- Manage contacts (add, update, delete, search)\n- Create and manage tags\n- Subscribe to webhook events\n- Handle event callbacks",
   "author": {

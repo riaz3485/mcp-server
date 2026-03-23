@@ -198,7 +198,7 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
 ## Available Tools
 
 ### Orchestration (direct call)
-- `dsl_execute_plan` - Execute a JSON-based orchestration plan (**read/write/destructive**, depending on nested tools). This is the only tool clients should call via `tools/call`.
+- `dsl_execute_plan` - Execute a JSON-based orchestration plan (**read/write/destructive**, depending on nested tools). This is the only tool clients should call via `tools/call`. Use `plan.version` `1.1` for new DSL features; `1.0` remains supported.
 
 ### DSL primitives (discovery + plans only)
 Contacts, tags, messages, events, and configuration tools appear in `tools/list` so agents know exact `name` values and `inputSchema` for plan steps. They are **not** callable via `tools/call`; reference them inside `dsl_execute_plan`. Each tool schema file and `tools/list` entry includes `x-textellent-mcp` (`directToolsCall: false`, `invocation: dsl_step_only`) plus the same policy in the tool description and root `inputSchema`/`outputSchema` descriptions (applied at load time).
