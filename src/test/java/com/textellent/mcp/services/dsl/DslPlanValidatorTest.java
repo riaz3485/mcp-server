@@ -56,6 +56,32 @@ class DslPlanValidatorTest {
         assertTrue(errors.stream().anyMatch(e -> e.contains("unsupported operation")));
     }
 
+    @Test
+    void acceptsV2PipelineMinimal() {
+        Map<String, Object> perms = new LinkedHashMap<>();
+        perms.put("mode", "read_only");
+        perms.put("allowedServers", Arrays.asList("textellent"));
+        perms.put("allowedTools", Arrays.asList("tags_get_summary"));
+
+        Map<String, Object> op = new LinkedHashMap<>();
+        op.put("op", "project");
+        op.put("fromVar", "rows");
+        op.put("fields", Arrays.asList("x"));
+        op.put("targetVar", "out");
+
+        Map<String, Object> stage = new LinkedHashMap<>();
+        stage.put("id", "s1");
+        stage.put("pure", true);
+        stage.put("ops", Arrays.asList((Object) op));
+
+        Map<String, Object> pipeline = new LinkedHashMap<>();
+        pipeline.put("permissions", perms);
+        pipeline.put("stages", Arrays.asList((Object) stage));
+
+        List<String> errors = validator.validatePipeline(pipeline);
+        assertTrue(errors.isEmpty(), "Expected no errors, got: " + errors);
+    }
+
     private static class TestRegistry extends McpToolRegistry {
         @Override
         public boolean hasTool(String toolName) {
