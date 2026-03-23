@@ -22,6 +22,15 @@ public class DslPlanValidator {
             ))
     );
 
+    /** DSL v2.0 pure operators (minimal basis). */
+    private static final Set<String> V2_PURE_OPERATORS = Collections.unmodifiableSet(
+            new LinkedHashSet<String>(Arrays.asList(
+                    "project", "filter", "mapRecords", "rename", "extend", "concat", "distinct",
+                    "groupBy", "aggregate", "indexBy", "lookup", "join", "chunk", "batchBy",
+                    "validate", "literal"
+            ))
+    );
+
     @Lazy
     private final McpToolRegistry toolRegistry;
 
@@ -177,6 +186,82 @@ public class DslPlanValidator {
             logger.info("validateTask: validation failed with {} error(s), phases={}", errors.size(), phases.size());
         } else {
             logger.debug("validateTask: valid, {} phases", phases.size());
+        }
+        return errors;
+    }
+
+    /**
+     * Validate DSL v2.0 pipeline (A9 static well-formedness).
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> validatePipeline(Map<String, Object> pipeline) {
+        List<String> errors = new ArrayList<>();
+        if (pipeline == null) {
+            errors.add("pipeline must be an object.");
+            return errors;
+        }
+        Object stagesObj = pipeline.get("stages");
+        if (!(stagesObj instanceof List)) {
+            errors.add("pipeline.stages must be a non-empty array.");
+            return errors;
+        }
+        List<Map<String, Object>> stages = (List<Map<String, Object>>) stagesObj;
+        if (stages.isEmpty()) {
+            errors.add("pipeline.stages must not be empty.");
+        }
+        Map<String, Object> perms = pipeline.get("permissions") instanceof Map
+                ? (Map<String, Object>) pipeline.get("permissions")
+                : null;
+        if (perms == null) {
+            errors.add("pipeline.permissions is required for v2.0.");
+        }
+        Set<String> stageIds = new HashSet<>();
+        for (int i = 0; i < stages.size(); i++) {
+            Map<String, Object> stage = stages.get(i);
+            String sid = (String) stage.get("id");
+            if (sid == null || sid.trim().isEmpty()) {
+                errors.add("pipeline.stages[" + i + "] missing id.");
+            } else if (!stageIds.add(sid)) {
+                errors.add("Duplicate pipeline stage id: " + sid);
+            }
+            boolean isPure = !Boolean.FALSE.equals(stage.get("pure"));
+            if (isPure) {
+                Object opsObj = stage.get("ops");
+                if (!(opsObj instanceof List)) {
+                    errors.add("Pure stage " + sid + " requires ops array.");
+                    continue;
+                }
+                List<Map<String, Object>> ops = (List<Map<String, Object>>) opsObj;
+                for (int j = 0; j < ops.size(); j++) {
+                    Map<String, Object> op = ops.get(j);
+                    String opName = (String) op.get("op");
+                    if (opName == null || opName.trim().isEmpty()) {
+                        errors.add("Stage " + sid + " op[" + j + "] missing op.");
+                    } else if (!V2_PURE_OPERATORS.contains(opName)) {
+                        errors.add("Stage " + sid + " op[" + j + "] unknown op '" + opName + "'.");
+                    }
+                    if (!"literal".equals(opName) && (op.get("targetVar") == null || String.valueOf(op.get("targetVar")).trim().isEmpty())) {
+                        errors.add("Stage " + sid + " op[" + j + "] requires targetVar.");
+                    }
+                }
+            } else {
+                Map<String, Object> effect = stage.get("effect") instanceof Map
+                        ? (Map<String, Object>) stage.get("effect")
+                        : null;
+                if (effect == null) {
+                    errors.add("Effect stage " + sid + " requires effect object.");
+                } else {
+                    String tool = (String) effect.get("tool");
+                    if (tool == null || tool.trim().isEmpty()) {
+                        errors.add("Effect stage " + sid + " missing effect.tool.");
+                    } else if (!toolRegistry.hasTool(tool)) {
+                        errors.add("Effect stage " + sid + " unknown tool '" + tool + "'.");
+                    }
+                }
+            }
+        }
+        if (!errors.isEmpty()) {
+            logger.info("validatePipeline: validation failed with {} error(s)", errors.size());
         }
         return errors;
     }
