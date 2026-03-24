@@ -16,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -479,8 +478,7 @@ public class McpController {
                 logger.warn("No tool definitions loaded – check that schemas/*.json exist and load correctly");
             }
 
-            // List every tool the token may use inside DSL plans so clients can discover names and inputSchema.
-            // Direct invocation remains restricted to ALLOWED_ORCHESTRATION_TOOLS in tools/call.
+            // List tools the token may use inside DSL plans; direct tools/call is only dsl_execute_plan.
             Set<String> userScopes = extractScopes(authentication);
             List<McpToolDefinition> listedTools = allTools.stream()
                 .filter(t -> hasRequiredScope(t, userScopes))
@@ -530,14 +528,12 @@ public class McpController {
         try {
             List<Map<String, Object>> resources = new ArrayList<>();
 
-            // Dynamic large-result resources from batch_action (legacy)
             resources.addAll(actionListService.listResultResources());
 
-            // Static orchestration DSL spec resource
             Map<String, Object> dslSpec = new HashMap<>();
             dslSpec.put("uri", "mcp-dsl://orchestration-spec/v1");
             dslSpec.put("name", "MCP Orchestration DSL Spec v1");
-            dslSpec.put("description", "JSON-based DSL specification for planning multi-step Textellent workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
+            dslSpec.put("description", "JSON-based DSL specification for planning multi-step appointment workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
             dslSpec.put("mimeType", "application/json");
             resources.add(dslSpec);
 
@@ -568,7 +564,6 @@ public class McpController {
             }
             String trimmedUri = uri.trim();
 
-            // Static DSL spec resource
             if ("mcp-dsl://orchestration-spec/v1".equals(trimmedUri)) {
                 Map<String, Object> spec = objectMapper.readValue(
                     this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v1.json"),
@@ -584,7 +579,6 @@ public class McpController {
                 return ResponseEntity.ok(response);
             }
 
-            // Dynamic large-result resources
             String content = actionListService.readResultResource(trimmedUri);
             if (content == null) {
                 return createErrorResponse(request.getId(), -32602, "Resource not found or already released: " + uri);
@@ -603,14 +597,14 @@ public class McpController {
         }
     }
 
-    /** Tool names that may be called directly via tools/call. All other tools are only invokable via the orchestrator (dsl_execute_plan). */
+    /** Tool names that may be called directly via tools/call. All other tools are only invokable via dsl_execute_plan. */
     private static final Set<String> ALLOWED_ORCHESTRATION_TOOLS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "dsl_execute_plan"
     )));
 
     /**
      * Handle tools/call method - executes a specific tool with scope enforcement.
-     * Only orchestration tools may be called directly; all other operations must go through dsl_execute_plan.
+     * Only dsl_execute_plan may be called directly; appointment primitives run inside plans.
      */
     private ResponseEntity<McpRpcResponse> handleToolsCall(
             McpRpcRequest request, String authCode, String partnerClientCode, Authentication authentication) {
@@ -631,14 +625,12 @@ public class McpController {
                 return createErrorResponse(request.getId(), -32602, "Tool name is required");
             }
 
-            // Restrict direct calls to orchestration tools only; primitives are only used inside DSL plans.
             if (!ALLOWED_ORCHESTRATION_TOOLS.contains(toolName)) {
                 auditLogService.logFailure(toolName, arguments, "Tool not allowed for direct call");
                 return createErrorResponse(request.getId(), -32602,
                     "Only orchestration tools can be called directly. Use dsl_execute_plan with a plan that includes the desired operations. Tool '" + toolName + "' is not in the allowed list.");
             }
 
-            // Check if tool exists
             if (!toolRegistry.hasTool(toolName)) {
                 auditLogService.logFailure(toolName, arguments, "Tool not found");
                 return createErrorResponse(request.getId(), -32602, "Unknown tool: " + toolName);
@@ -705,7 +697,7 @@ public class McpController {
                 // use partner_auth_code instead of regular auth_code
                 if (finalPartnerCode != null && !finalPartnerCode.isEmpty()) {
                     // Client wants to act on behalf of office/sub-client
-                    logger.info("Client requesting tags for partnerClientCode: {}", finalPartnerCode);
+                    logger.info("Client requesting partner APIs for partnerClientCode: {}", finalPartnerCode);
 
                     // Use partner_auth_code from JWT (from partner table)
                     String partnerAuthCode = jwtClaimsExtractor.extractPartnerAuthCode(jwt);
@@ -715,7 +707,7 @@ public class McpController {
                     } else {
                         logger.warn("partnerClientCode provided but partner_auth_code not found in JWT");
                         return createErrorResponse(request.getId(), -32001,
-                                "Partner authentication is not available. Your account cannot access tags for partner offices. " +
+                                "Partner authentication is not available. Your account cannot access partner office APIs. " +
                                 "Please contact support to enable partner access.");
                     }
                 } else {
