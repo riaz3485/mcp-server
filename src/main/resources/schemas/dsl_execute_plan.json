@@ -241,7 +241,12 @@
                               },
                               "literal": {
                                 "type": "array",
-                                "description": "Inline literal array source for batchLoop."
+                                "description": "Inline literal array source for batchLoop.",
+                                "items": {
+                                  "type": "object",
+                                  "description": "One batch element (e.g. row or record); shape is workflow-specific.",
+                                  "additionalProperties": true
+                                }
                               }
                             },
                             "additionalProperties": false
@@ -668,7 +673,12 @@
             "type": "integer"
           },
           "failedItems": {
-            "type": "array"
+            "type": "array",
+            "description": "Per-item failure details from batch execution.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
           },
           "nextRecommendedBatchSize": {
             "type": "integer"
