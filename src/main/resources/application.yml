@@ -5,7 +5,7 @@ server:
 
 spring:
   application:
-    name: textellent-mcp-server
+    name: textellent-appointments-mcp-server
 
   jackson:
     default-property-inclusion: non_null
@@ -111,7 +111,7 @@ logging:
 # MCP Configuration
 mcp:
   server:
-    name: textellent-mcp-server
+    name: textellent-appointments-mcp-server
     version: 1.0.0
-    description: MCP Server exposing Textellent REST APIs
+    description: MCP Server exposing Textellent appointment APIs
     protocol-version: 2025-06-18

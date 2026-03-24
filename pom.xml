@@ -10,8 +10,8 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Textellent MCP Server</name>
-    <description>MCP Server exposing Textellent REST APIs through Model Context Protocol</description>
+    <name>Textellent Appointments MCP Server</name>
+    <description>MCP Server exposing Textellent appointment APIs through Model Context Protocol</description>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
