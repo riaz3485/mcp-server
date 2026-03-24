@@ -1,5 +1,5 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Get appointment canceled events",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Get associate contact to tag events",
   "inputSchema": {
     "type": "object",
     "properties": {

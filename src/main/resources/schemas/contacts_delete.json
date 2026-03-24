@@ -1,22 +1,18 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Cancel an appointment",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Delete a contact by ID",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "source": {
-        "type": "string",
-        "description": "Source system (e.g., ZOHO_BOOKING)"
-      },
-      "extId": {
-        "type": "string",
-        "description": "External ID for the appointment"
-      },
       "partnerClientCode": {
         "type": "string",
         "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
+      },
+      "contactId": {
+        "type": "string",
+        "description": "The ID of the contact to delete"
       }
     },
-    "required": ["extId"]
+    "required": ["contactId"]
   },
   "outputSchema": {
     "type": "object",

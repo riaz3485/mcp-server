@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for Textellent Appointments MCP Server
+# Test script for Textellent MCP Server
 # Usage: ./test-mcp.sh YOUR_AUTH_CODE YOUR_CLIENT_CODE
 
 AUTH_CODE="${1:-test_auth_code}"
@@ -8,7 +8,7 @@ PARTNER_CLIENT_CODE="${2:-test_client_code}"
 MCP_URL="http://localhost:9090/mcp"
 
 echo "======================================"
-echo "Testing Textellent Appointments MCP Server"
+echo "Testing Textellent MCP Server"
 echo "======================================"
 echo ""
 
@@ -37,7 +37,7 @@ echo ""
 echo ""
 
 # Test 3: Get tool details
-echo "Test 3: Get appointments_create Tool Details"
+echo "Test 3: Get Messages Tool Details"
 echo "-------------------------------------"
 curl -s -X POST "$MCP_URL" \
   -H "Content-Type: application/json" \
@@ -48,13 +48,14 @@ curl -s -X POST "$MCP_URL" \
     "id": 2,
     "method": "tools/list",
     "params": {}
-  }' | jq '.result.tools[] | select(.name == "appointments_create")'
+  }' | jq '.result.tools[] | select(.name == "messages_send")'
 echo ""
 echo ""
 
-# Test 4: Validate a plan via dsl_execute_plan (dry run; no Textellent API calls)
-echo "Test 4: dsl_execute_plan dry run"
+# Test 4: Call a tool (this will fail if backend is not running)
+echo "Test 4: Call contacts_get_all tool"
 echo "-------------------------------------"
+echo "Note: This will fail if your API backend is not running on port 8080"
 curl -s -X POST "$MCP_URL" \
   -H "Content-Type: application/json" \
   -H "authCode: $AUTH_CODE" \
@@ -64,29 +65,10 @@ curl -s -X POST "$MCP_URL" \
     "id": 3,
     "method": "tools/call",
     "params": {
-      "name": "dsl_execute_plan",
+      "name": "contacts_get_all",
       "arguments": {
-        "dryRun": true,
-        "plan": {
-          "version": "1.0",
-          "simplePlan": {
-            "description": "smoke test",
-            "permissions": {
-              "mode": "read_only",
-              "allowedServers": ["textellent"],
-              "allowedTools": ["events_appointment_created"]
-            },
-            "limits": { "maxToolCalls": 5, "maxDurationMs": 60000 },
-            "steps": [
-              {
-                "id": "s1",
-                "server": "textellent",
-                "tool": "events_appointment_created",
-                "args": { "limit": 1 }
-              }
-            ]
-          }
-        }
+        "pageSize": 5,
+        "pageNum": 1
       }
     }
   }' | jq .

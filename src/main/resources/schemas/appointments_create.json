@@ -1,9 +1,5 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Create a new appointment. For a single operation this can be one step inside dsl_execute_plan; for multiple operations, compose them in one plan.",
-  "x-textellent-mcp": {
-    "directToolsCall": false,
-    "invocation": "dsl_step_only"
-  },
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Create a new appointment",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -59,20 +55,14 @@
             "description": "Appointment status (e.g., upcoming)"
           }
         },
-        "required": [
-          "startDateTime",
-          "endDateTime",
-          "phoneNumber"
-        ]
+        "required": ["startDateTime", "endDateTime", "phoneNumber"]
       },
       "partnerClientCode": {
         "type": "string",
         "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
-    "required": [
-      "appointmentData"
-    ]
+    "required": ["appointmentData"]
   },
   "outputSchema": {
     "type": "object",
