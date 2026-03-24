@@ -2,17 +2,16 @@ package com.textellent.mcp.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -35,21 +34,11 @@ import java.util.*;
  */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity(prePostEnabled = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
 @ConditionalOnExpression("'${security.mode:oauth2}' != 'local'")
-public class SecurityConfig {
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
-
-    /**
-     * API key authentication filter is only required when security.mode=apikey.
-     * In other modes (e.g., oauth2), this bean may not be present.
-     */
-    private final ApiKeyAuthenticationFilter apiKeyAuthenticationFilter;
-
-    public SecurityConfig(@Autowired(required = false) ApiKeyAuthenticationFilter apiKeyAuthenticationFilter) {
-        this.apiKeyAuthenticationFilter = apiKeyAuthenticationFilter;
-    }
 
     @Value("${security.oauth2.resourceserver.jwt.issuer-uri:}")
     private String issuerUri;
@@ -66,52 +55,52 @@ public class SecurityConfig {
     @Value("${security.mode:oauth2}")
     private String securityMode;
 
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
         logger.info("Configuring security with mode: {}", securityMode);
 
         http
-            .cors(cors -> {})
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+            .cors()
+            .and()
+            .csrf().disable()
+            .sessionManagement()
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS);
 
         // Configure authentication based on mode
         if ("local".equals(securityMode)) {
             logger.info("Configuring LOCAL mode - permit all");
-            http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+            http.authorizeRequests().anyRequest().permitAll();
         } else if ("apikey".equals(securityMode)) {
             logger.info("Configuring API KEY mode");
-
-            if (apiKeyAuthenticationFilter == null) {
-                throw new IllegalStateException("security.mode=apikey but ApiKeyAuthenticationFilter bean is not available");
-            }
-
-            http.addFilterBefore(apiKeyAuthenticationFilter,
-                    org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
-            http.authorizeHttpRequests(auth -> auth
-                .requestMatchers("/health", "/actuator/health", "/version").permitAll()
-                .requestMatchers("/mcp", "/mcp/**").authenticated()
-                .anyRequest().authenticated());
+            http.addFilterBefore(new ApiKeyAuthenticationFilter(),
+                org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+            http.authorizeRequests()
+                .antMatchers("/health", "/actuator/health", "/version").permitAll()
+                .antMatchers("/mcp", "/mcp/**").authenticated()
+                .anyRequest().authenticated();
         } else if ("oauth2".equals(securityMode)) {
             logger.info("Configuring OAUTH2 JWT mode");
 
-            http.authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/health", "/actuator/health", "/version").permitAll()
-                    .requestMatchers("/.well-known/**").permitAll()
-                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/mcp", "/mcp/sse").permitAll()
-                    .requestMatchers("/mcp", "/mcp/**").authenticated()
-                    .anyRequest().authenticated());
-            http.oauth2ResourceServer(oauth2 -> oauth2
+            // Configure OAuth2 resource server with JWT
+            http
+                .authorizeRequests()
+                    .antMatchers("/health", "/actuator/health", "/version").permitAll()
+                    // Allow .well-known endpoints for OAuth discovery (RFC 8414)
+                    .antMatchers("/.well-known/**").permitAll()
+                    // Allow GET /mcp and GET /mcp/sse for metadata discovery (needed by ChatGPT Apps)
+                    .antMatchers(org.springframework.http.HttpMethod.GET, "/mcp", "/mcp/sse").permitAll()
+                    // All other /mcp endpoints require authentication
+                    .antMatchers("/mcp", "/mcp/**").authenticated()
+                    .anyRequest().authenticated()
+                .and()
+                .oauth2ResourceServer()
                     .bearerTokenResolver(bearerTokenResolver())
-                    .jwt(jwt -> jwt
-                            .decoder(jwtDecoder())
-                            .jwtAuthenticationConverter(jwtAuthenticationConverter())));
+                    .jwt()
+                    .decoder(jwtDecoder())
+                    .jwtAuthenticationConverter(jwtAuthenticationConverter());
 
             logger.info("OAuth2 resource server configured with JWT decoder and custom bearer token resolver");
         }
-
-        return http.build();
     }
 
     @Bean
@@ -212,9 +201,9 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Parse allowed origins from config (use origin patterns to support * and wildcards)
+        // Parse allowed origins from config
         List<String> origins = Arrays.asList(allowedOrigins.split(","));
-        configuration.setAllowedOriginPatterns(origins);
+        configuration.setAllowedOrigins(origins);
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList(

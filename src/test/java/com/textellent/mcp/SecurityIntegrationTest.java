@@ -7,13 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.hamcrest.Matchers.containsString;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -22,9 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Integration tests for security and scope enforcement.
  */
-@SpringBootTest(properties = "security.mode=local")
+@SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("local")
+@ActiveProfiles("local") // Use local profile for testing (no security)
 public class SecurityIntegrationTest {
 
     @Autowired
@@ -44,7 +45,7 @@ public class SecurityIntegrationTest {
     public void testVersionEndpointIsPublic() throws Exception {
         mockMvc.perform(get("/version"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.name").value("textellent-appointments-mcp-server"));
+            .andExpect(jsonPath("$.name").value("textellent-mcp-server"));
     }
 
     @Test
@@ -61,7 +62,7 @@ public class SecurityIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.jsonrpc").value("2.0"))
             .andExpect(jsonPath("$.result.protocolVersion").exists())
-            .andExpect(jsonPath("$.result.serverInfo.name").value("textellent-appointments-mcp-server"));
+            .andExpect(jsonPath("$.result.serverInfo.name").value("textellent-mcp-server"));
     }
 
     @Test
@@ -120,15 +121,16 @@ public class SecurityIntegrationTest {
         request.setMethod("tools/call");
 
         Map<String, Object> params = new HashMap<>();
-        params.put("name", "appointments_create");
+        params.put("name", "contacts_get_all");
         params.put("arguments", new HashMap<>());
         request.setParams(params);
 
+        // In local mode with anonymous auth, scope check happens first
         mockMvc.perform(post("/mcp")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.error.code").value(-32602))
-            .andExpect(jsonPath("$.error.message").value(containsString("dsl_execute_plan")));
+            .andExpect(jsonPath("$.error.code").value(-32000))
+            .andExpect(jsonPath("$.error.message").value("Insufficient permissions. Required scope: textellent.read"));
     }
 }

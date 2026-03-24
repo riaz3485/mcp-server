@@ -1,9 +1,5 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Update an existing appointment. Invoke only as a step inside dsl_execute_plan.",
-  "x-textellent-mcp": {
-    "directToolsCall": false,
-    "invocation": "dsl_step_only"
-  },
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Update an existing appointment",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -65,9 +61,7 @@
         "description": "Optional partner client code to call APIs on behalf of a specific partner office/sub-client. Only use when explicitly requested by the user."
       }
     },
-    "required": [
-      "appointmentData"
-    ]
+    "required": ["appointmentData"]
   },
   "outputSchema": {
     "type": "object",

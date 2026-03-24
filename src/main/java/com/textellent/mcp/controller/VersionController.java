@@ -23,7 +23,7 @@ public class VersionController {
     @Value("${mcp.server.protocol-version:2025-06-18}")
     private String protocolVersion;
 
-    @Value("${mcp.server.description:MCP Server exposing Textellent appointment APIs}")
+    @Value("${mcp.server.description:MCP Server exposing Textellent REST APIs}")
     private String description;
 
     @GetMapping("/version")
