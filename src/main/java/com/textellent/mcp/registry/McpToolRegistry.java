@@ -3,7 +3,9 @@ package com.textellent.mcp.registry;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.textellent.mcp.models.McpToolDefinition;
-import com.textellent.mcp.services.*;
+import com.textellent.mcp.services.AppointmentApiService;
+import com.textellent.mcp.services.CallbackEventApiService;
+import com.textellent.mcp.services.DslOrchestrationService;
 import org.everit.json.schema.Schema;
 import org.everit.json.schema.ValidationException;
 import org.everit.json.schema.loader.SchemaLoader;
@@ -28,7 +30,6 @@ public class McpToolRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolRegistry.class);
 
-    /** Prepended to tool description for primitives (also declared per-schema as x-textellent-mcp). */
     private static final String DSL_STEP_ONLY_TOOL_DESCRIPTION_PREFIX =
         "MCP invocation policy (required): Do not call this tool with MCP tools/call. "
             + "It appears in tools/list only for discovery (this tool's name and inputSchema). "
@@ -52,25 +53,13 @@ public class McpToolRegistry {
     private final Map<String, Schema> schemas = new HashMap<>();
 
     @Autowired
-    private MessageApiService messageApiService;
-
-    @Autowired
-    private com.textellent.mcp.services.DslOrchestrationService dslOrchestrationService;
-
-    @Autowired
-    private ContactApiService contactApiService;
-
-    @Autowired
-    private TagApiService tagApiService;
+    private DslOrchestrationService dslOrchestrationService;
 
     @Autowired
     private AppointmentApiService appointmentApiService;
 
     @Autowired
     private CallbackEventApiService callbackEventApiService;
-
-    @Autowired
-    private ConfigurationApiService configurationApiService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -81,83 +70,27 @@ public class McpToolRegistry {
         loadToolSchemas();
     }
 
-    /**
-     * Register all MCP tools with their handlers.
-     */
     private void registerAllTools() {
-        // Orchestration: exposed for direct tools/call. Primitives appear in tools/list for DSL discovery but are only invokable inside dsl_execute_plan (see McpController).
         registerTool("dsl_execute_plan", dslOrchestrationService::executePlan);
 
-        // Message tools (invoked only by orchestrator when executing DSL plans)
-        registerTool("messages_send", messageApiService::sendMessage);
-
-        // Contact tools
-        registerTool("contacts_add", contactApiService::addContacts);
-        registerTool("contacts_update", contactApiService::updateContact);
-        registerTool("contacts_get_all", contactApiService::getAllContacts);
-        registerTool("contacts_get_summary", contactApiService::getContactsSummary);
-        registerTool("contacts_get", contactApiService::getContact);
-        registerTool("contacts_delete", contactApiService::deleteContact);
-        registerTool("contacts_find_multiple_phones", contactApiService::findContactWithMultiplePhoneNumbers);
-        registerTool("contacts_find", contactApiService::findContact);
-
-        // Tag tools
-        registerTool("tags_create", tagApiService::createTag);
-        registerTool("tags_update", tagApiService::updateTag);
-        registerTool("tags_get", tagApiService::getTag);
-        registerTool("tags_get_all", tagApiService::getAllTags);
-        registerTool("tags_get_summary", tagApiService::getTagsSummary);
-        registerTool("tags_assign_contacts", tagApiService::assignContactsToTag);
-        registerTool("tags_delete", tagApiService::deleteTag);
-        registerTool("tags_remove_contacts", tagApiService::removeContactsFromTag);
-
-        // Appointment tools
         registerTool("appointments_create", appointmentApiService::createAppointment);
         registerTool("appointments_update", appointmentApiService::updateAppointment);
         registerTool("appointments_cancel", appointmentApiService::cancelAppointment);
 
-        // Callback event tools (single fetchPagedEvents implementation; paths registered here)
-        registerTool("events_phone_added_wrong_number", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToWrongNumber.json", args, ac, pc));
-        registerTool("events_outgoing_delivery_status", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/outgoingMessageDeliveryStatus.json", args, ac, pc));
-        registerTool("events_new_contact_details", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/newContactDetails.json", args, ac, pc));
-        registerTool("events_disassociate_contact_tag", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/disassociateContactFromTag.json", args, ac, pc));
-        registerTool("events_incoming_message", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/incomingMessageDetail.json", args, ac, pc));
-        registerTool("events_phone_added_dnt", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToDNT.json", args, ac, pc));
-        registerTool("events_associate_contact_tag", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/associateContactToTag.json", args, ac, pc));
         registerTool("events_appointment_created", (args, ac, pc) ->
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentCreated.json", args, ac, pc));
         registerTool("events_appointment_updated", (args, ac, pc) ->
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentUpdated.json", args, ac, pc));
         registerTool("events_appointment_canceled", (args, ac, pc) ->
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentCanceled.json", args, ac, pc));
-        registerTool("events_phone_removed_dnt", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberRemovedFromDNT.json", args, ac, pc));
-
-        // Configuration tools
-        registerTool("webhook_subscribe", configurationApiService::webhookSubscribe);
-        registerTool("webhook_unsubscribe", configurationApiService::webhookUnsubscribe);
-        registerTool("webhook_list_subscriptions", configurationApiService::listSubscriptions);
 
         logger.info("Registered {} MCP tools", handlers.size());
     }
 
-    /**
-     * Register a tool with its handler.
-     */
     private void registerTool(String toolName, McpToolHandler handler) {
         handlers.put(toolName, handler);
     }
 
-    /**
-     * Load all tool schemas from resources/schemas directory.
-     */
     @SuppressWarnings("unchecked")
     private void loadToolSchemas() {
         try {
@@ -270,46 +203,29 @@ public class McpToolRegistry {
         schemaRoot.put("description", mcpNote);
     }
 
-    /**
-     * Get all registered tool definitions.
-     */
     public List<McpToolDefinition> getAllToolDefinitions() {
         return new ArrayList<>(toolDefinitions.values());
     }
 
-    /**
-     * Execute a tool with the given name and arguments.
-     */
     public Object execute(String toolName, Map<String, Object> arguments, String authCode, String partnerClientCode) throws Exception {
         McpToolHandler handler = handlers.get(toolName);
         if (handler == null) {
             throw new IllegalArgumentException("Unknown tool: " + toolName);
         }
 
-        // Validate arguments against schema if available
         validateArguments(toolName, arguments);
 
-        // Execute the tool
         return handler.execute(arguments, authCode, partnerClientCode);
     }
 
-    /**
-     * Check if a tool exists in the registry.
-     */
     public boolean hasTool(String toolName) {
         return handlers.containsKey(toolName);
     }
 
-    /**
-     * Get a specific tool definition by name.
-     */
     public McpToolDefinition getToolDefinition(String toolName) {
         return toolDefinitions.get(toolName);
     }
 
-    /**
-     * Validate arguments against the tool's input schema.
-     */
     private void validateArguments(String toolName, Map<String, Object> arguments) throws ValidationException {
         Schema schema = schemas.get(toolName);
         if (schema != null && arguments != null) {
@@ -318,33 +234,21 @@ public class McpToolRegistry {
         }
     }
 
-    /**
-     * Configure safety metadata for a tool based on its name and function.
-     */
     private void configureSafetyMetadata(String toolName, McpToolDefinition toolDef) {
-        // Read-only tools (GET operations, list operations)
-        if (toolName.startsWith("contacts_get") || toolName.startsWith("tags_get") ||
-            toolName.startsWith("events_") || toolName.equals("webhook_list_subscriptions") ||
-            toolName.equals("contacts_find") || toolName.equals("contacts_find_multiple_phones")) {
+        if (toolName.startsWith("events_")) {
             toolDef.setReadOnly(true);
             toolDef.setDestructive(false);
-            toolDef.setRequiredScope("read"); // Changed from textellent.read to match OAuth2 scopes
-        }
-        // Destructive tools (DELETE/UPDATE operations)
-        else if (toolName.contains("_delete") || toolName.contains("_cancel") || toolName.contains("_update") ||
-                 toolName.equals("webhook_unsubscribe") || toolName.equals("tags_remove_contacts")) {
+            toolDef.setRequiredScope("read");
+        } else if (toolName.contains("_delete") || toolName.contains("_cancel") || toolName.contains("_update")) {
             toolDef.setReadOnly(false);
             toolDef.setDestructive(true);
-            toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
-        }
-        // Write tools (CREATE operations)
-        else {
+            toolDef.setRequiredScope("write");
+        } else {
             toolDef.setReadOnly(false);
             toolDef.setDestructive(false);
-            toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
+            toolDef.setRequiredScope("write");
         }
 
-        // Orchestration tool: no scope required for plan submission
         if ("dsl_execute_plan".equals(toolName)) {
             toolDef.setRequiredScope(null);
         }
