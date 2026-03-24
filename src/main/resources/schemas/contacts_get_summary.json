@@ -1,5 +1,9 @@
 {
-  "description": "CRITICAL: This is the DEFAULT tool for listing contacts - use this instead of contacts_get_all. NEVER make up or guess contact data. Use cases: (1) 'list my contacts' or 'show contacts' - returns total count plus first 10 contacts (name and phone only). (2) 'find contact named X' or 'search for X' - use searchKey parameter to find specific contacts. (3) 'how many contacts do I have' - returns totalCount. For browsing more contacts, use contacts_get_all with pagination.",
+  "description": "CRITICAL: Prefer this tool over contacts_get_all. NEVER make up or guess contact data. Use cases: (1) 'list my contacts' or 'show contacts' - returns total count plus a simplified list of contacts (name and phone only). (2) 'find contact named X' or 'search for X' - use searchKey parameter to find specific contacts. (3) 'how many contacts do I have' - returns totalCount. Use contacts_get_all only when you need data that this tool does not provide. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use `dsl_execute_plan` with a multi-step plan instead.",
+  "x-textellent-mcp": {
+    "directToolsCall": false,
+    "invocation": "dsl_step_only"
+  },
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -22,24 +26,31 @@
       },
       "contacts": {
         "type": "array",
-        "description": "First 10 contacts (simplified: name and phone only). Use contacts_get_all with pagination if you need more.",
+        "description": "Simplified contacts for the query (id, name and phone only). Use contacts_get_all only when you need data not present in this output.",
         "items": {
           "type": "object",
           "properties": {
-            "name": { "type": "string" },
-            "phone": { "type": "string" }
+            "id": {
+              "type": "string",
+              "description": "Internal contact identifier (needed for follow-up operations like contacts_delete)."
+            },
+            "name": {
+              "type": "string"
+            },
+            "phone": {
+              "type": "string"
+            }
           }
         }
-      },
-      "hasMore": {
-        "type": "boolean",
-        "description": "True if there are more contacts beyond the first 10. Use contacts_get_all with pagination to see more."
       },
       "searchKey": {
         "type": "string",
         "description": "Search key used (if any)"
       }
     },
-    "required": ["totalCount", "contacts"]
+    "required": [
+      "totalCount",
+      "contacts"
+    ]
   }
 }

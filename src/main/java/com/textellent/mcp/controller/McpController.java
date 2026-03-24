@@ -15,7 +15,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -102,6 +101,18 @@ public class McpController {
         transportCapabilities.put("sse", true);
         transportCapabilities.put("http", true);
         capabilities.put("transports", transportCapabilities);
+
+        // Tools capabilities (explicit list/call support)
+        Map<String, Object> toolsCapabilities = new HashMap<>();
+        toolsCapabilities.put("list", new HashMap<>());
+        toolsCapabilities.put("call", new HashMap<>());
+        capabilities.put("tools", toolsCapabilities);
+
+        // Resources capabilities (explicit list/read support)
+        Map<String, Object> resourcesCapabilities = new HashMap<>();
+        resourcesCapabilities.put("list", new HashMap<>());
+        resourcesCapabilities.put("read", new HashMap<>());
+        capabilities.put("resources", resourcesCapabilities);
 
         metadata.put("capabilities", capabilities);
 
@@ -208,7 +219,7 @@ public class McpController {
         serverInfo.put("name", serverName);
         serverInfo.put("version", serverVersion);
 
-        // Add OAuth2 capabilities
+        // Add capabilities (authentication, tools, resources)
         Map<String, Object> capabilities = new HashMap<>();
         Map<String, Object> authCapabilities = new HashMap<>();
 
@@ -223,6 +234,18 @@ public class McpController {
 
         authCapabilities.put("oauth2", oauth2Config);
         capabilities.put("authentication", authCapabilities);
+
+        // Tools capabilities
+        Map<String, Object> toolsCapabilities = new HashMap<>();
+        toolsCapabilities.put("list", new HashMap<>());
+        toolsCapabilities.put("call", new HashMap<>());
+        capabilities.put("tools", toolsCapabilities);
+
+        // Resources capabilities
+        Map<String, Object> resourcesCapabilities = new HashMap<>();
+        resourcesCapabilities.put("list", new HashMap<>());
+        resourcesCapabilities.put("read", new HashMap<>());
+        capabilities.put("resources", resourcesCapabilities);
 
         serverInfo.put("capabilities", capabilities);
 
@@ -374,6 +397,10 @@ public class McpController {
                 return handleToolsList(request, authentication);
             case "tools/call":
                 return handleToolsCall(request, authCode, partnerClientCode, authentication);
+            case "resources/list":
+                return handleResourcesList(request);
+            case "resources/read":
+                return handleResourcesRead(request);
             default:
                 return createErrorResponse(request.getId(), -32601, "Method not found: " + method);
         }
@@ -389,8 +416,18 @@ public class McpController {
             Map<String, Object> result = new HashMap<>();
             result.put("protocolVersion", protocolVersion);
 
+            // Advertise tools and resources capabilities explicitly
             Map<String, Object> capabilities = new HashMap<>();
-            capabilities.put("tools", new HashMap<>());
+            Map<String, Object> toolsCapabilities = new HashMap<>();
+            toolsCapabilities.put("list", new HashMap<>());
+            toolsCapabilities.put("call", new HashMap<>());
+            capabilities.put("tools", toolsCapabilities);
+
+            Map<String, Object> resourcesCapabilities = new HashMap<>();
+            resourcesCapabilities.put("list", new HashMap<>());
+            resourcesCapabilities.put("read", new HashMap<>());
+            capabilities.put("resources", resourcesCapabilities);
+
             result.put("capabilities", capabilities);
 
             Map<String, Object> serverInfo = new HashMap<>();
@@ -411,6 +448,7 @@ public class McpController {
 
     /**
      * Handle tools/list method - returns all available tools filtered by user's scopes.
+     * All registered tools are now visible; safety is enforced via scopes and rate limits, not by hiding tools.
      */
     private ResponseEntity<McpRpcResponse> handleToolsList(McpRpcRequest request, Authentication authentication) {
         logger.info("Handling tools/list request");
@@ -432,22 +470,28 @@ public class McpController {
             List<McpToolDefinition> allTools = toolRegistry.getAllToolDefinitions();
             logger.debug("Total tools available: {}", allTools.size());
 
-            // Filter tools based on user's scopes
-            Set<String> userScopes = extractScopes(authentication);
-            logger.debug("Extracted scopes: {}", userScopes);
+            if (allTools.isEmpty()) {
+                logger.warn("No tool definitions loaded – check that schemas/*.json exist and load correctly");
+            }
 
-            List<McpToolDefinition> filteredTools = allTools.stream()
-                .filter(tool -> hasRequiredScope(tool, userScopes))
+            // List every tool the token may use inside DSL plans so clients can discover names and inputSchema.
+            // Direct invocation remains restricted to ALLOWED_ORCHESTRATION_TOOLS in tools/call.
+            Set<String> userScopes = extractScopes(authentication);
+            List<McpToolDefinition> listedTools = allTools.stream()
+                .filter(t -> hasRequiredScope(t, userScopes))
+                .sorted(Comparator
+                    .comparing((McpToolDefinition t) -> !"dsl_execute_plan".equals(t.getName()))
+                    .thenComparing(McpToolDefinition::getName, String.CASE_INSENSITIVE_ORDER))
                 .collect(Collectors.toList());
 
-            logger.debug("Filtered tools count: {}", filteredTools.size());
+            logger.debug("Listed tools count (scope-filtered): {}", listedTools.size());
 
             // Categorize tools by safety
             Map<String, List<McpToolDefinition>> categorizedTools = new HashMap<>();
-            List<McpToolDefinition> readOnlyTools = filteredTools.stream()
+            List<McpToolDefinition> readOnlyTools = listedTools.stream()
                 .filter(t -> Boolean.TRUE.equals(t.getReadOnly()))
                 .collect(Collectors.toList());
-            List<McpToolDefinition> writeTools = filteredTools.stream()
+            List<McpToolDefinition> writeTools = listedTools.stream()
                 .filter(t -> !Boolean.TRUE.equals(t.getReadOnly()))
                 .collect(Collectors.toList());
 
@@ -455,12 +499,16 @@ public class McpController {
             categorizedTools.put("write", writeTools);
 
             Map<String, Object> result = new HashMap<>();
-            result.put("tools", filteredTools);
+            result.put("tools", listedTools);
             result.put("categorized", categorizedTools);
-            result.put("totalCount", filteredTools.size());
+            result.put("totalCount", listedTools.size());
 
             McpRpcResponse response = new McpRpcResponse(request.getId(), result);
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore().mustRevalidate())
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .body(response);
 
         } catch (Exception e) {
             logger.error("Error listing tools", e);
@@ -469,7 +517,101 @@ public class McpController {
     }
 
     /**
+     * Handle resources/list - currently exposes only static resources.
+     * No caching: responses are always fresh.
+     */
+    private ResponseEntity<McpRpcResponse> handleResourcesList(McpRpcRequest request) {
+        logger.info("Handling resources/list request");
+        try {
+            List<Map<String, Object>> resources = new ArrayList<>();
+
+            // Static orchestration DSL spec resource
+            Map<String, Object> dslSpecV1 = new HashMap<>();
+            dslSpecV1.put("uri", "mcp-dsl://orchestration-spec/v1");
+            dslSpecV1.put("name", "MCP Orchestration DSL Spec v1");
+            dslSpecV1.put("description", "JSON-based DSL specification for planning multi-step Textellent workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
+            dslSpecV1.put("mimeType", "application/json");
+            resources.add(dslSpecV1);
+
+            Map<String, Object> dslSpecV2 = new HashMap<>();
+            dslSpecV2.put("uri", "mcp-dsl://orchestration-spec/v2");
+            dslSpecV2.put("name", "MCP Orchestration DSL Spec v2.0");
+            dslSpecV2.put("description", "Breaking DSL v2.0: typed pipeline, pure operators, audited effects. Use with plan.version 2.0 and plan.pipeline.");
+            dslSpecV2.put("mimeType", "application/json");
+            resources.add(dslSpecV2);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("resources", resources);
+            McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+            return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore().mustRevalidate())
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .body(response);
+        } catch (Exception e) {
+            logger.error("Error listing resources", e);
+            return createErrorResponse(request.getId(), -32603, "Failed to list resources: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Handle resources/read - read a static resource by URI.
+     */
+    private ResponseEntity<McpRpcResponse> handleResourcesRead(McpRpcRequest request) {
+        logger.info("Handling resources/read request");
+        try {
+            Map<String, Object> params = request.getParams();
+            String uri = params != null ? (String) params.get("uri") : null;
+            if (uri == null || uri.trim().isEmpty()) {
+                return createErrorResponse(request.getId(), -32602, "Params.uri is required");
+            }
+            String trimmedUri = uri.trim();
+
+            // Static DSL spec resource
+            if ("mcp-dsl://orchestration-spec/v1".equals(trimmedUri)) {
+                Map<String, Object> spec = objectMapper.readValue(
+                    this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v1.json"),
+                    Map.class
+                );
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("uri", trimmedUri);
+                contentItem.put("mimeType", "application/json");
+                contentItem.put("text", objectMapper.writeValueAsString(spec));
+                Map<String, Object> result = new HashMap<>();
+                result.put("contents", Collections.singletonList(contentItem));
+                McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+                return ResponseEntity.ok(response);
+            }
+            if ("mcp-dsl://orchestration-spec/v2".equals(trimmedUri)) {
+                Map<String, Object> spec = objectMapper.readValue(
+                    this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v2.json"),
+                    Map.class
+                );
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("uri", trimmedUri);
+                contentItem.put("mimeType", "application/json");
+                contentItem.put("text", objectMapper.writeValueAsString(spec));
+                Map<String, Object> result = new HashMap<>();
+                result.put("contents", Collections.singletonList(contentItem));
+                McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+                return ResponseEntity.ok(response);
+            }
+
+            return createErrorResponse(request.getId(), -32602, "Resource not found: " + uri);
+        } catch (Exception e) {
+            logger.error("Error reading resource", e);
+            return createErrorResponse(request.getId(), -32603, "Failed to read resource: " + e.getMessage());
+        }
+    }
+
+    /** Tool names that may be called directly via tools/call. All other tools are only invokable via the orchestrator (dsl_execute_plan). */
+    private static final Set<String> ALLOWED_ORCHESTRATION_TOOLS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "dsl_execute_plan"
+    )));
+
+    /**
      * Handle tools/call method - executes a specific tool with scope enforcement.
+     * Only orchestration tools may be called directly; all other operations must go through dsl_execute_plan.
      */
     private ResponseEntity<McpRpcResponse> handleToolsCall(
             McpRpcRequest request, String authCode, String partnerClientCode, Authentication authentication) {
@@ -488,6 +630,13 @@ public class McpController {
 
             if (toolName == null) {
                 return createErrorResponse(request.getId(), -32602, "Tool name is required");
+            }
+
+            // Restrict direct calls to orchestration tools only; primitives are only used inside DSL plans.
+            if (!ALLOWED_ORCHESTRATION_TOOLS.contains(toolName)) {
+                auditLogService.logFailure(toolName, arguments, "Tool not allowed for direct call");
+                return createErrorResponse(request.getId(), -32602,
+                    "Only orchestration tools can be called directly. Use dsl_execute_plan with a plan that includes the desired operations. Tool '" + toolName + "' is not in the allowed list.");
             }
 
             // Check if tool exists
@@ -514,8 +663,25 @@ public class McpController {
             if (!rateLimitOk) {
                 String limitType = Boolean.TRUE.equals(toolDef.getReadOnly()) ? "read" : "write";
                 auditLogService.logFailure(toolName, arguments, "Rate limit exceeded: " + limitType);
-                return createErrorResponse(request.getId(), -32000,
-                    "Rate limit exceeded for " + limitType + " operations");
+
+                // Return a cooldown-style MCP result instead of a JSON-RPC error so
+                // clients see the connector as healthy but temporarily rate-limited.
+                List<Map<String, Object>> contentArray = new ArrayList<>();
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("type", "text");
+                contentItem.put("text",
+                    "This connector has reached its " + limitType + " rate limit. " +
+                    "Please wait about 60 seconds before making more " + limitType + " tool calls.");
+                contentArray.add(contentItem);
+
+                Map<String, Object> resultMap = new HashMap<>();
+                resultMap.put("content", contentArray);
+                resultMap.put("isError", true);
+                resultMap.put("rateLimited", true);
+                resultMap.put("limitType", limitType);
+
+                McpRpcResponse response = new McpRpcResponse(request.getId(), resultMap);
+                return ResponseEntity.ok(response);
             }
 
             // Extract authCode and partnerClientCode from JWT if in OAuth2 mode

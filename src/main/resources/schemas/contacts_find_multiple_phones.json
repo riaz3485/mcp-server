@@ -1,5 +1,9 @@
 {
-  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Find contact with multiple phone numbers",
+  "description": "CRITICAL: ALWAYS call this tool - NEVER make up, guess, or fabricate data. Find contact with multiple phone numbers. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use `dsl_execute_plan` with a multi-step plan instead.",
+  "x-textellent-mcp": {
+    "directToolsCall": false,
+    "invocation": "dsl_step_only"
+  },
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -12,11 +16,25 @@
         "description": "External ID"
       },
       "phoneNumbers": {
-        "type": "string",
-        "description": "Comma-separated list of phone numbers"
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Comma-separated list of phone numbers (legacy format, still supported)."
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Preferred v1.1 format: array of phone numbers."
+          }
+        ],
+        "description": "Phone numbers for bulk existence lookup."
       }
     },
-    "required": ["phoneNumbers"]
+    "required": [
+      "phoneNumbers"
+    ]
   },
   "outputSchema": {
     "type": "object",

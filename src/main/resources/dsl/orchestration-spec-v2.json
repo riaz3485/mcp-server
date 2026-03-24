@@ -1,0 +1,62 @@
+{
+  "version": "2.0",
+  "title": "Textellent MCP Orchestration DSL",
+  "description": "Breaking v2.0: typed pipeline of pure relational operators (A1–A52) followed by audited effectful tool steps. Use plan.version \"2.0\" and plan.pipeline only.",
+  "usage": {
+    "whenToUse": [
+      "Bulk transforms with explicit project/filter/join/validate partitions.",
+      "Effectful API calls with audit trail and optional confirmation barrier."
+    ],
+    "howToUse": [
+      "Set plan.version to \"2.0\".",
+      "Provide plan.pipeline with permissions, limits, initialState.datasets, and stages.",
+      "Pure stages list ops (project, filter, join, validate, …). Effect stages set pure:false and effect.tool.",
+      "Use dryRun:true to validate only. Use preview:true to run pure steps and type-check effect payloads without calling tools.",
+      "Pass confirmationToken when a confirmable effect requires it (A47)."
+    ]
+  },
+  "schemaReference": "src/main/resources/schemas/dsl_execute_plan.json",
+  "minimalOperators": [
+    "project", "filter", "mapRecords", "rename", "extend", "concat", "distinct",
+    "groupBy", "aggregate", "indexBy", "lookup", "join", "chunk", "batchBy", "validate", "literal"
+  ],
+  "example": {
+    "version": "2.0",
+    "pipeline": {
+      "id": "example",
+      "description": "Project then validate",
+      "permissions": {
+        "mode": "read_only",
+        "allowedServers": ["textellent"],
+        "allowedTools": ["tags_get_summary"]
+      },
+      "limits": {
+        "maxToolCalls": 10,
+        "maxDurationMs": 60000
+      },
+      "initialState": {
+        "datasets": {
+          "rows": [
+            { "name": "a", "v": 1 },
+            { "name": "b", "v": 2 }
+          ]
+        },
+        "scalars": {}
+      },
+      "stages": [
+        {
+          "id": "s1",
+          "pure": true,
+          "ops": [
+            {
+              "op": "project",
+              "fromVar": "rows",
+              "fields": ["name"],
+              "targetVar": "names"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
