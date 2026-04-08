@@ -191,17 +191,13 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
 | Method | Description | Auth Required |
 |--------|-------------|---------------|
 | `initialize` | Protocol handshake | No |
-| `tools/list` | List tools visible for this token (orchestrator + DSL primitives for discovery) | Yes (read scope) |
-| `tools/call` | Execute a tool (`dsl_execute_plan` only; primitives run inside plans) | Yes (tool-specific) |
+| `tools/list` | List tools visible for this token | Yes (read scope) |
+| `tools/call` | Execute a tool directly | Yes (tool-specific) |
 | `notifications/*` | Client notifications | No |
 
 ## Available Tools
 
-### Orchestration (direct call)
-- `dsl_execute_plan` - Execute a JSON-based orchestration plan (**read/write/destructive**, depending on nested tools). This is the only tool clients should call via `tools/call`. Use `plan.version` `1.1` for task/simplePlan features; `2.0` is a **breaking** pipeline form (`plan.pipeline` only, no `task`/`simplePlan`). Fetch `mcp-dsl://orchestration-spec/v2` for the v2 spec. Server-side execution is handled by **`OrchestrationDslEngine`** (`com.textellent.mcp.services.dsl`), which routes by `plan.version` and runs the appropriate internal runtime (simple plan, task, or pipeline).
-
-### DSL primitives (discovery + plans only)
-Contacts, tags, messages, events, and configuration tools appear in `tools/list` so agents know exact `name` values and `inputSchema` for plan steps. They are **not** callable via `tools/call`; reference them inside `dsl_execute_plan`. Each tool schema file and `tools/list` entry includes `x-textellent-mcp` (`directToolsCall: false`, `invocation: dsl_step_only`) plus the same policy in the tool description and root `inputSchema`/`outputSchema` descriptions (applied at load time).
+Contacts, tags, messages, events, and configuration tools are all directly callable through `tools/call`.
 
 ## Security Configuration
 
