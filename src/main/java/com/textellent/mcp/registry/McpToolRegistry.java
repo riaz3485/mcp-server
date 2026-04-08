@@ -28,12 +28,24 @@ public class McpToolRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolRegistry.class);
 
-    /**
-     * Planner / commit tools that are directly visible to the model.
-     * All other tools are transaction-only and must be accessed via the action plan system.
-     */
-    private static final Set<String> PLANNER_COMMIT_TOOLS = new HashSet<>(
-            Arrays.asList("list_actions", "action_list", "execute", "execute_continue", "release_resource"));
+    /** Prepended to tool description for primitives (also declared per-schema as x-textellent-mcp). */
+    private static final String DSL_STEP_ONLY_TOOL_DESCRIPTION_PREFIX =
+        "MCP invocation policy (required): Do not call this tool with MCP tools/call. "
+            + "It appears in tools/list only for discovery (this tool's name and inputSchema). "
+            + "Run it only as a step inside a plan submitted to dsl_execute_plan (use this tool's name as the step `tool` field).\n\n";
+
+    private static final String DIRECT_ORCHESTRATOR_TOOL_DESCRIPTION_PREFIX =
+        "MCP invocation policy (required): This is the only tool you may invoke via MCP tools/call. "
+            + "Every other tool in tools/list is dsl_step_only: use those names only inside the plan you pass here.\n\n";
+
+    private static final String INPUT_SCHEMA_DSL_STEP_NOTE =
+        "MCP (required): These properties are step arguments inside dsl_execute_plan only—not a standalone tools/call payload.";
+
+    private static final String INPUT_SCHEMA_DIRECT_ORCHESTRATOR_NOTE =
+        "MCP (required): This object is the arguments map for tools/call when the tool name is dsl_execute_plan.";
+
+    private static final String OUTPUT_SCHEMA_DSL_STEP_NOTE =
+        "MCP: Response shape when this primitive is executed as a dsl_execute_plan step (never from tools/call).";
 
     private final Map<String, McpToolHandler> handlers = new HashMap<>();
     private final Map<String, McpToolDefinition> toolDefinitions = new HashMap<>();
@@ -43,7 +55,7 @@ public class McpToolRegistry {
     private MessageApiService messageApiService;
 
     @Autowired
-    private com.textellent.mcp.services.ActionListService actionListService;
+    private com.textellent.mcp.services.dsl.OrchestrationDslEngine orchestrationDslEngine;
 
     @Autowired
     private ContactApiService contactApiService;
@@ -70,14 +82,10 @@ public class McpToolRegistry {
      * Register all MCP tools with their handlers.
      */
     private void registerAllTools() {
-        // Action list / planner / commit tools
-        registerTool("list_actions", actionListService::listActions);
-        registerTool("action_list", actionListService::setActionList);
-        registerTool("execute", actionListService::executePlan);
-        registerTool("execute_continue", actionListService::executeContinue);
-        registerTool("release_resource", actionListService::releaseResource);
+        // Orchestration: exposed for direct tools/call. Primitives appear in tools/list for DSL discovery but are only invokable inside dsl_execute_plan (see McpController).
+        registerTool("dsl_execute_plan", orchestrationDslEngine::executePlan);
 
-        // Message tools
+        // Message tools (invoked only by orchestrator when executing DSL plans)
         registerTool("messages_send", messageApiService::sendMessage);
 
         // Contact tools
@@ -136,6 +144,7 @@ public class McpToolRegistry {
     /**
      * Load all tool schemas from resources/schemas directory.
      */
+    @SuppressWarnings("unchecked")
     private void loadToolSchemas() {
         try {
             PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
@@ -147,24 +156,39 @@ public class McpToolRegistry {
                     if (filename != null) {
                         String toolName = filename.replace(".json", "");
 
-                        // Read the schema file as a map
                         Map<String, Object> schemaMap = objectMapper.readValue(is, new TypeReference<Map<String, Object>>() {});
 
-                        // Create tool definition
+                        Map<String, Object> inputSchema = (Map<String, Object>) schemaMap.get("inputSchema");
+                        Map<String, Object> outputSchema = (Map<String, Object>) schemaMap.get("outputSchema");
+
+                        boolean mustBeDirect = "dsl_execute_plan".equals(toolName);
+                        Map<String, Object> xTextellentMcp = resolveTextellentMcpExtension(toolName, schemaMap, mustBeDirect);
+
+                        boolean directToolsCall = Boolean.TRUE.equals(xTextellentMcp.get("directToolsCall"));
+                        if (directToolsCall) {
+                            prependRootSchemaDescription(inputSchema, INPUT_SCHEMA_DIRECT_ORCHESTRATOR_NOTE);
+                        } else {
+                            prependRootSchemaDescription(inputSchema, INPUT_SCHEMA_DSL_STEP_NOTE);
+                            prependRootSchemaDescription(outputSchema, OUTPUT_SCHEMA_DSL_STEP_NOTE);
+                        }
+
+                        String baseDescription = (String) schemaMap.get("description");
+                        String fullDescription = (directToolsCall ? DIRECT_ORCHESTRATOR_TOOL_DESCRIPTION_PREFIX : DSL_STEP_ONLY_TOOL_DESCRIPTION_PREFIX)
+                            + (baseDescription != null ? baseDescription : "");
+
                         McpToolDefinition toolDef = new McpToolDefinition();
                         toolDef.setName(toolName);
-                        toolDef.setDescription((String) schemaMap.get("description"));
-                        toolDef.setInputSchema((Map<String, Object>) schemaMap.get("inputSchema"));
-                        toolDef.setOutputSchema((Map<String, Object>) schemaMap.get("outputSchema"));
+                        toolDef.setDescription(fullDescription);
+                        toolDef.setInputSchema(inputSchema);
+                        toolDef.setOutputSchema(outputSchema);
+                        toolDef.setTextellentMcp(xTextellentMcp);
 
-                        // Set safety metadata based on tool type
                         configureSafetyMetadata(toolName, toolDef);
 
                         toolDefinitions.put(toolName, toolDef);
 
-                        // Load JSON schema validator for input validation
-                        if (schemaMap.containsKey("inputSchema")) {
-                            JSONObject jsonSchema = new JSONObject(schemaMap.get("inputSchema"));
+                        if (inputSchema != null) {
+                            JSONObject jsonSchema = new JSONObject(inputSchema);
                             Schema schema = SchemaLoader.load(jsonSchema);
                             schemas.put(toolName, schema);
                         }
@@ -180,6 +204,56 @@ public class McpToolRegistry {
         } catch (IOException e) {
             logger.error("Failed to load tool schemas", e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveTextellentMcpExtension(String toolName, Map<String, Object> schemaMap, boolean mustBeDirect) {
+        Map<String, Object> xtm = (Map<String, Object>) schemaMap.get("x-textellent-mcp");
+        if (xtm == null) {
+            logger.warn("Schema file for tool '{}' is missing x-textellent-mcp; add it to the JSON schema for explicit MCP policy.", toolName);
+            xtm = new LinkedHashMap<>();
+        } else {
+            xtm = new LinkedHashMap<>(xtm);
+        }
+
+        Object rawDirect = xtm.get("directToolsCall");
+        boolean directToolsCall;
+        if (rawDirect instanceof Boolean) {
+            directToolsCall = (Boolean) rawDirect;
+        } else {
+            directToolsCall = mustBeDirect;
+            if (rawDirect != null) {
+                logger.warn("Tool '{}' x-textellent-mcp.directToolsCall must be a boolean; coercing to {}", toolName, mustBeDirect);
+            }
+        }
+
+        if (directToolsCall != mustBeDirect) {
+            logger.warn("Tool '{}' x-textellent-mcp.directToolsCall={} conflicts with server policy (expected {}); enforcing policy.",
+                toolName, directToolsCall, mustBeDirect);
+            directToolsCall = mustBeDirect;
+        }
+
+        xtm.put("directToolsCall", directToolsCall);
+        xtm.put("invocation", directToolsCall ? "direct_tools_call" : "dsl_step_only");
+        return Collections.unmodifiableMap(xtm);
+    }
+
+    private void prependRootSchemaDescription(Map<String, Object> schemaRoot, String mcpNote) {
+        if (schemaRoot == null || mcpNote == null) {
+            return;
+        }
+        Object existing = schemaRoot.get("description");
+        if (existing instanceof String) {
+            String str = (String) existing;
+            if (!str.isEmpty()) {
+                if (str.startsWith(mcpNote)) {
+                    return;
+                }
+                schemaRoot.put("description", mcpNote + " " + str);
+                return;
+            }
+        }
+        schemaRoot.put("description", mcpNote);
     }
 
     /**
@@ -256,45 +330,9 @@ public class McpToolRegistry {
             toolDef.setRequiredScope("write"); // Changed from textellent.write to match OAuth2 scopes
         }
 
-        // Planner/commit tools: do not require scopes (discovery + orchestration only)
-        if (PLANNER_COMMIT_TOOLS.contains(toolName)) {
+        // Orchestration tool: no scope required for plan submission
+        if ("dsl_execute_plan".equals(toolName)) {
             toolDef.setRequiredScope(null);
         }
-    }
-
-    /**
-     * Returns the set of transaction-only tool names (all non-planner/commit tools).
-     * Only discoverable via list_actions.
-     */
-    public Set<String> getTransactionOnlyToolNames() {
-        Set<String> names = new HashSet<>();
-        for (McpToolDefinition def : toolDefinitions.values()) {
-            String name = def.getName();
-            if (name != null && !PLANNER_COMMIT_TOOLS.contains(name)) {
-                names.add(name);
-            }
-        }
-        return names;
-    }
-
-    /**
-     * Returns definitions for transaction-only tools (for list_actions catalog).
-     */
-    public List<McpToolDefinition> getTransactionOnlyToolDefinitions() {
-        List<McpToolDefinition> defs = new ArrayList<>();
-        for (McpToolDefinition def : toolDefinitions.values()) {
-            String name = def.getName();
-            if (name != null && !PLANNER_COMMIT_TOOLS.contains(name)) {
-                defs.add(def);
-            }
-        }
-        return defs;
-    }
-
-    /**
-     * Returns true if the given tool is a planner/commit tool that may be called directly.
-     */
-    public boolean isPlannerCommitTool(String toolName) {
-        return toolName != null && PLANNER_COMMIT_TOOLS.contains(toolName);
     }
 }

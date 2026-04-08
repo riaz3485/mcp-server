@@ -2,6 +2,7 @@ package com.textellent.mcp.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.textellent.mcp.services.pagination.TextellentPagedListMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -96,239 +97,147 @@ public class ContactApiService {
 
     /**
      * Get all contacts using Textellent API.
-     * GET /api/v1/contacts.json?searchKey={searchKey}&pageSize={pageSize}&pageNum={pageNum}
+     * GET /api/v1/contacts.json?searchKey={searchKey}&pageNum={n}
+     * <p>
+     * Uses {@link TextellentPagedListMerger} so every page is fetched and merged; models see one list.
      */
     public Object getAllContacts(Map<String, Object> arguments, String authCode, String partnerClientCode) {
         logger.info("Getting all contacts with arguments: {}", arguments);
 
         try {
             String searchKey = (String) arguments.getOrDefault("searchKey", "");
-            Integer pageSize = (Integer) arguments.getOrDefault("pageSize", 10);
-            Integer pageNum = (Integer) arguments.getOrDefault("pageNum", 1);
-
-            String response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/v1/contacts.json")
-                            .queryParam("searchKey", searchKey)
-                            .queryParam("pageSize", pageSize)
-                            .queryParam("pageNum", pageNum)
-                            .build())
-                    .header("authCode", authCode)
-                    .header("partnerClientCode", partnerClientCode)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .onErrorResume(e -> {
-                        logger.error("Error getting all contacts", e);
-                        return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
-                    })
-                    .block();
-
-            // Parse response and expose full contact objects (not a simplified summary).
-            if (response != null) {
-                try {
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode rootNode = mapper.readTree(response);
-
-                    // Check if this is an actual error response
-                    if (rootNode.has("error") && rootNode.get("error").isTextual()) {
-                        logger.warn("Backend returned error: {}", response);
-                        return response;
-                    }
-
-                    JsonNode dataNode = rootNode;
-                    if (rootNode.has("text")) {
-                        logger.info("Response has 'text' field, parsing as JSON");
-                        String textContent = rootNode.get("text").asText();
-                        dataNode = mapper.readTree(textContent);
-                    }
-
-                    if (dataNode.has("data")) {
-                        dataNode = dataNode.get("data");
-                    }
-
-                    JsonNode contactsNode;
-                    JsonNode totalCountNode = null;
-                    JsonNode pageSizeNode = null;
-                    JsonNode pageNumNode = null;
-                    if (dataNode.isArray()) {
-                        contactsNode = dataNode;
-                    } else {
-                        contactsNode = dataNode.get("contacts");
-                        totalCountNode = dataNode.get("totalCount");
-                        pageSizeNode = dataNode.get("pageSize");
-                        pageNumNode = dataNode.get("pageNum");
-                    }
-
-                    if (contactsNode != null && contactsNode.isArray()) {
-                        Map<String, Object> fullResponse = new HashMap<>();
-
-                        // Keep full contact objects exactly as provided by the backend.
-                        Object fullContacts = mapper.convertValue(contactsNode, Object.class);
-                        fullResponse.put("contacts", fullContacts);
-
-                        int totalCount = totalCountNode != null && totalCountNode.isInt()
-                                ? totalCountNode.asInt()
-                                : contactsNode.size();
-                        fullResponse.put("totalCount", totalCount);
-
-                        int effectivePageSize = pageSizeNode != null && pageSizeNode.isInt()
-                                ? pageSizeNode.asInt()
-                                : (pageSize != null ? pageSize : contactsNode.size());
-                        int effectivePageNum = pageNumNode != null && pageNumNode.isInt()
-                                ? pageNumNode.asInt()
-                                : (pageNum != null ? pageNum : 1);
-
-                        fullResponse.put("pageSize", effectivePageSize);
-                        fullResponse.put("pageNum", effectivePageNum);
-
-                        logger.info("Returning {} full contacts out of {} total (page {}/{})",
-                                contactsNode.size(),
-                                totalCount,
-                                effectivePageNum,
-                                effectivePageSize);
-
-                        return mapper.writeValueAsString(fullResponse);
-                    }
-                } catch (Exception e) {
-                    logger.warn("Failed to parse contacts_get_all response, returning raw response", e);
-                    return response;
-                }
-            }
-
-            // Should not reach here
-            logger.warn("No valid contacts array found in response");
-            return response;
+            ObjectMapper mapper = new ObjectMapper();
+            return TextellentPagedListMerger.mergeToJsonWithTotalCount(
+                    mapper,
+                    logger,
+                    "contacts_get_all",
+                    pageNum -> fetchContactsListPage(searchKey, pageNum, authCode, partnerClientCode),
+                    TextellentPagedListMerger::parseContactsListPage,
+                    "contacts",
+                    TextellentPagedListMerger.DEFAULT_MAX_PAGES
+            );
         } catch (Exception e) {
             logger.error("Failed to get all contacts", e);
             throw new RuntimeException("Failed to get all contacts: " + e.getMessage(), e);
         }
     }
 
+    private String fetchContactsListPage(String searchKey, int pageNum, String authCode, String partnerClientCode) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v1/contacts.json")
+                        .queryParam("searchKey", searchKey)
+                        .queryParam("pageNum", pageNum)
+                        .build())
+                .header("authCode", authCode)
+                .header("partnerClientCode", partnerClientCode)
+                .retrieve()
+                .bodyToMono(String.class)
+                .onErrorResume(e -> {
+                    logger.error("Error getting contacts page {}", pageNum, e);
+                    return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
+                })
+                .block();
+    }
+
     /**
      * Get a summary of contacts (count + simplified contact list) to avoid ChatGPT hallucination.
      * This is the DEFAULT tool for listing contacts - returns minimal data.
-     * GET /api/v1/contacts.json?searchKey=&pageSize=&pageNum=
+     * Internally uses getAllContacts to retrieve all matching contacts, then simplifies the result.
      */
     public Object getContactsSummary(Map<String, Object> arguments, String authCode, String partnerClientCode) {
         logger.info("Getting contacts summary with arguments: {}", arguments);
 
         try {
             String searchKey = (String) arguments.getOrDefault("searchKey", "");
-            Integer pageSize = (Integer) arguments.getOrDefault("pageSize", 10);
-            Integer pageNum = (Integer) arguments.getOrDefault("pageNum", 1);
-
-            String response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/v1/contacts.json")
-                            .queryParam("searchKey", searchKey)
-                            .queryParam("pageSize", pageSize)
-                            .queryParam("pageNum", pageNum)
-                            .build())
-                    .header("authCode", authCode)
-                    .header("partnerClientCode", partnerClientCode)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .onErrorResume(e -> {
-                        logger.error("Error getting contacts summary", e);
-                        return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
-                    })
-                    .block();
-
-            // Parse response and extract totalCount + first 10 contacts (simplified)
-            if (response != null) {
-                try {
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode rootNode = mapper.readTree(response);
-
-                    // Check if this is an actual error response
-                    if (rootNode.has("error") && rootNode.get("error").isTextual()) {
-                        logger.warn("Backend returned error: {}", response);
-                        return response;
-                    }
-
-                    JsonNode dataNode = rootNode;
-                    if (rootNode.has("text")) {
-                        logger.info("Response has 'text' field, parsing as JSON");
-                        String textContent = rootNode.get("text").asText();
-                        dataNode = mapper.readTree(textContent);
-                    }
-
-                    if (dataNode.has("data")) {
-                        dataNode = dataNode.get("data");
-                    }
-
-                    JsonNode contactsNode;
-                    JsonNode totalCountNode = null;
-                    if (dataNode.isArray()) {
-                        contactsNode = dataNode;
-                    } else {
-                        contactsNode = dataNode.get("contacts");
-                        totalCountNode = dataNode.get("totalCount");
-                    }
-
-                    Map<String, Object> summaryResponse = new HashMap<>();
-
-                    List<Map<String, String>> simplifiedContacts = new ArrayList<>();
-                    if (contactsNode != null && contactsNode.isArray()) {
-                        for (JsonNode contact : contactsNode) {
-                            Map<String, String> simpleContact = new HashMap<>();
-
-                            JsonNode firstNameNode = contact.get("firstName");
-                            JsonNode lastNameNode = contact.get("lastName");
-                            String name = "";
-                            if (firstNameNode != null && lastNameNode != null) {
-                                name = firstNameNode.asText() + " " + lastNameNode.asText();
-                            } else if (firstNameNode != null) {
-                                name = firstNameNode.asText();
-                            } else if (lastNameNode != null) {
-                                name = lastNameNode.asText();
-                            }
-                            simpleContact.put("name", name.trim());
-
-                            JsonNode phoneNode = contact.get("phoneNumber");
-                            if (phoneNode == null) {
-                                phoneNode = contact.get("mobile");
-                            }
-                            if (phoneNode != null) {
-                                simpleContact.put("phone", phoneNode.asText());
-                            }
-
-                            JsonNode idNode = contact.get("id");
-                            if (idNode != null) {
-                                simpleContact.put("id", idNode.asText());
-                            }
-
-                            simplifiedContacts.add(simpleContact);
-                        }
-                    }
-
-                    int totalCount = totalCountNode != null ? totalCountNode.asInt() : simplifiedContacts.size();
-                    int pSize = pageSize != null ? pageSize : 10;
-                    int pNum = pageNum != null ? pageNum : 1;
-                    boolean hasMore = (pNum * pSize) < totalCount;
-                    summaryResponse.put("totalCount", totalCount);
-                    summaryResponse.put("contacts", simplifiedContacts);
-                    summaryResponse.put("hasMore", hasMore);
-                    summaryResponse.put("pageSize", pageSize);
-                    summaryResponse.put("pageNum", pageNum);
-
-                    if (searchKey != null && !searchKey.isEmpty()) {
-                        summaryResponse.put("searchKey", searchKey);
-                    }
-
-                    logger.info("Returning contacts summary: totalCount={}, page {}/{}, hasMore={}",
-                            totalCount, pNum, (totalCount + pSize - 1) / pSize, hasMore);
-
-                    return mapper.writeValueAsString(summaryResponse);
-                } catch (Exception e) {
-                    logger.warn("Failed to parse contacts summary response, returning raw response", e);
-                    return response;
-                }
+            Object allContactsResult = getAllContacts(arguments, authCode, partnerClientCode);
+            if (!(allContactsResult instanceof String)) {
+                logger.warn("Unexpected result type from getAllContacts: {}", allContactsResult != null ? allContactsResult.getClass() : "null");
+                return allContactsResult;
             }
 
-            // Should not reach here
-            logger.warn("No valid response received");
-            return response;
+            String response = (String) allContactsResult;
+            if (response == null) {
+                logger.warn("getAllContacts returned null for contacts summary");
+                return null;
+            }
+
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode rootNode = mapper.readTree(response);
+
+                if (rootNode.has("error") && rootNode.get("error").isTextual()) {
+                    logger.warn("Backend returned error: {}", response);
+                    return response;
+                }
+
+                JsonNode dataNode = rootNode;
+                if (rootNode.has("text")) {
+                    logger.info("Response has 'text' field, parsing as JSON");
+                    String textContent = rootNode.get("text").asText();
+                    dataNode = mapper.readTree(textContent);
+                }
+
+                if (dataNode.has("data")) {
+                    dataNode = dataNode.get("data");
+                }
+
+                JsonNode contactsNode = dataNode.get("contacts");
+                JsonNode totalCountNode = dataNode.get("totalCount");
+
+                Map<String, Object> summaryResponse = new HashMap<>();
+
+                List<Map<String, String>> simplifiedContacts = new ArrayList<>();
+                if (contactsNode != null && contactsNode.isArray()) {
+                    for (JsonNode contact : contactsNode) {
+                        Map<String, String> simpleContact = new HashMap<>();
+
+                        JsonNode firstNameNode = contact.get("firstName");
+                        JsonNode lastNameNode = contact.get("lastName");
+                        String name = "";
+                        if (firstNameNode != null && lastNameNode != null) {
+                            name = firstNameNode.asText() + " " + lastNameNode.asText();
+                        } else if (firstNameNode != null) {
+                            name = firstNameNode.asText();
+                        } else if (lastNameNode != null) {
+                            name = lastNameNode.asText();
+                        }
+                        simpleContact.put("name", name.trim());
+
+                        JsonNode phoneNode = contact.get("phoneNumber");
+                        if (phoneNode == null) {
+                            phoneNode = contact.get("mobile");
+                        }
+                        if (phoneNode != null) {
+                            simpleContact.put("phone", phoneNode.asText());
+                        }
+
+                        JsonNode idNode = contact.get("id");
+                        if (idNode != null) {
+                            simpleContact.put("id", idNode.asText());
+                        }
+
+                        simplifiedContacts.add(simpleContact);
+                    }
+                }
+
+                int totalCount = totalCountNode != null && totalCountNode.isNumber()
+                        ? totalCountNode.asInt()
+                        : simplifiedContacts.size();
+                summaryResponse.put("totalCount", totalCount);
+                summaryResponse.put("contacts", simplifiedContacts);
+
+                if (searchKey != null && !searchKey.isEmpty()) {
+                    summaryResponse.put("searchKey", searchKey);
+                }
+
+                logger.info("Returning contacts summary: totalCount={} (merged list)", totalCount);
+
+                return mapper.writeValueAsString(summaryResponse);
+            } catch (Exception e) {
+                logger.warn("Failed to parse contacts summary response, returning raw response", e);
+                return response;
+            }
         } catch (Exception e) {
             logger.error("Failed to get contacts summary", e);
             throw new RuntimeException("Failed to get contacts summary: " + e.getMessage(), e);
@@ -402,7 +311,7 @@ public class ContactApiService {
 
         try {
             String extId = (String) arguments.getOrDefault("extId", "");
-            String phoneNumbers = (String) arguments.get("phoneNumbers");
+            String phoneNumbers = normalizePhoneNumbers(arguments.get("phoneNumbers"));
 
             String response = webClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -425,6 +334,23 @@ public class ContactApiService {
             logger.error("Failed to find contact with multiple phone numbers", e);
             throw new RuntimeException("Failed to find contact with multiple phone numbers: " + e.getMessage(), e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String normalizePhoneNumbers(Object phoneNumbersArg) {
+        if (phoneNumbersArg instanceof String) {
+            return (String) phoneNumbersArg;
+        }
+        if (phoneNumbersArg instanceof List) {
+            List<String> numbers = new ArrayList<>();
+            for (Object item : (List<Object>) phoneNumbersArg) {
+                if (item != null && !String.valueOf(item).trim().isEmpty()) {
+                    numbers.add(String.valueOf(item).trim());
+                }
+            }
+            return String.join(",", numbers);
+        }
+        throw new IllegalArgumentException("phoneNumbers must be a comma-separated string or string array.");
     }
 
     /**

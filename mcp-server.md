@@ -210,8 +210,8 @@ POST /mcp
 ```
 
 Supported methods:
-- `tools/list` - Returns all 26 tool definitions
-- `tools/call` - Executes a specific tool
+- `tools/list` - Returns orchestration + DSL primitive definitions for discovery
+- `tools/call` - Executes `dsl_execute_plan` (primitives are step-only inside plans)
 
 ## Example Usage
 
@@ -229,7 +229,7 @@ curl -X POST http://localhost:8080/mcp \
   }'
 ```
 
-### Send a Message
+### Execute Plan (Canonical Path)
 ```bash
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
@@ -240,13 +240,37 @@ curl -X POST http://localhost:8080/mcp \
     "id": 2,
     "method": "tools/call",
     "params": {
-      "name": "messages_send",
+      "name": "dsl_execute_plan",
       "arguments": {
-        "text": "Hello from MCP!",
-        "from": "+17607297951",
-        "to": "+15109721012",
-        "mediaFileIds": [],
-        "mediaFileURLs": []
+        "plan": {
+          "version": "1.1",
+          "simplePlan": {
+            "description": "Send one message",
+            "permissions": {
+              "mode": "modify_workspace",
+              "allowedServers": ["textellent"],
+              "allowedTools": ["messages_send"]
+            },
+            "limits": {
+              "maxToolCalls": 1,
+              "maxDurationMs": 60000
+            },
+            "steps": [
+              {
+                "id": "send_message",
+                "server": "textellent",
+                "tool": "messages_send",
+                "args": {
+                  "text": "Hello from MCP!",
+                  "from": "+17607297951",
+                  "to": "+15109721012",
+                  "mediaFileIds": [],
+                  "mediaFileURLs": []
+                }
+              }
+            ]
+          }
+        }
       }
     }
   }'

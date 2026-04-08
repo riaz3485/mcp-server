@@ -6,7 +6,6 @@ import com.textellent.mcp.models.*;
 import com.textellent.mcp.ratelimit.RateLimitService;
 import com.textellent.mcp.registry.McpToolRegistry;
 import com.textellent.mcp.security.JwtClaimsExtractor;
-import com.textellent.mcp.services.ActionListService;
 import com.textellent.mcp.sse.SseSessionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +15,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -40,9 +38,6 @@ public class McpController {
 
     @Autowired
     private McpToolRegistry toolRegistry;
-
-    @Autowired
-    private ActionListService actionListService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -453,6 +448,7 @@ public class McpController {
 
     /**
      * Handle tools/list method - returns all available tools filtered by user's scopes.
+     * All registered tools are now visible; safety is enforced via scopes and rate limits, not by hiding tools.
      */
     private ResponseEntity<McpRpcResponse> handleToolsList(McpRpcRequest request, Authentication authentication) {
         logger.info("Handling tools/list request");
@@ -478,20 +474,24 @@ public class McpController {
                 logger.warn("No tool definitions loaded – check that schemas/*.json exist and load correctly");
             }
 
-            // Only expose planner/commit tools via tools/list.
-            // All other tools are transaction-only and must be used via the action plan system.
-            List<McpToolDefinition> filteredTools = allTools.stream()
-                .filter(tool -> toolRegistry.isPlannerCommitTool(tool.getName()))
+            // List every tool the token may use inside DSL plans so clients can discover names and inputSchema.
+            // Direct invocation remains restricted to ALLOWED_ORCHESTRATION_TOOLS in tools/call.
+            Set<String> userScopes = extractScopes(authentication);
+            List<McpToolDefinition> listedTools = allTools.stream()
+                .filter(t -> hasRequiredScope(t, userScopes))
+                .sorted(Comparator
+                    .comparing((McpToolDefinition t) -> !"dsl_execute_plan".equals(t.getName()))
+                    .thenComparing(McpToolDefinition::getName, String.CASE_INSENSITIVE_ORDER))
                 .collect(Collectors.toList());
 
-            logger.debug("Filtered tools count: {}", filteredTools.size());
+            logger.debug("Listed tools count (scope-filtered): {}", listedTools.size());
 
             // Categorize tools by safety
             Map<String, List<McpToolDefinition>> categorizedTools = new HashMap<>();
-            List<McpToolDefinition> readOnlyTools = filteredTools.stream()
+            List<McpToolDefinition> readOnlyTools = listedTools.stream()
                 .filter(t -> Boolean.TRUE.equals(t.getReadOnly()))
                 .collect(Collectors.toList());
-            List<McpToolDefinition> writeTools = filteredTools.stream()
+            List<McpToolDefinition> writeTools = listedTools.stream()
                 .filter(t -> !Boolean.TRUE.equals(t.getReadOnly()))
                 .collect(Collectors.toList());
 
@@ -499,9 +499,9 @@ public class McpController {
             categorizedTools.put("write", writeTools);
 
             Map<String, Object> result = new HashMap<>();
-            result.put("tools", filteredTools);
+            result.put("tools", listedTools);
             result.put("categorized", categorizedTools);
-            result.put("totalCount", filteredTools.size());
+            result.put("totalCount", listedTools.size());
 
             McpRpcResponse response = new McpRpcResponse(request.getId(), result);
             return ResponseEntity.ok()
@@ -517,13 +517,29 @@ public class McpController {
     }
 
     /**
-     * Handle resources/list - list large execution results exposed as MCP resources (searchable context, no context rot).
+     * Handle resources/list - currently exposes only static resources.
      * No caching: responses are always fresh.
      */
     private ResponseEntity<McpRpcResponse> handleResourcesList(McpRpcRequest request) {
         logger.info("Handling resources/list request");
         try {
-            List<Map<String, Object>> resources = actionListService.listResultResources();
+            List<Map<String, Object>> resources = new ArrayList<>();
+
+            // Static orchestration DSL spec resource
+            Map<String, Object> dslSpecV1 = new HashMap<>();
+            dslSpecV1.put("uri", "mcp-dsl://orchestration-spec/v1");
+            dslSpecV1.put("name", "MCP Orchestration DSL Spec v1");
+            dslSpecV1.put("description", "JSON-based DSL specification for planning multi-step Textellent workflows. Fetch this resource before constructing complex plans for dsl_execute_plan.");
+            dslSpecV1.put("mimeType", "application/json");
+            resources.add(dslSpecV1);
+
+            Map<String, Object> dslSpecV2 = new HashMap<>();
+            dslSpecV2.put("uri", "mcp-dsl://orchestration-spec/v2");
+            dslSpecV2.put("name", "MCP Orchestration DSL Spec v2.0");
+            dslSpecV2.put("description", "Breaking DSL v2.0: typed pipeline, pure operators, audited effects. Use with plan.version 2.0 and plan.pipeline.");
+            dslSpecV2.put("mimeType", "application/json");
+            resources.add(dslSpecV2);
+
             Map<String, Object> result = new HashMap<>();
             result.put("resources", resources);
             McpRpcResponse response = new McpRpcResponse(request.getId(), result);
@@ -539,7 +555,7 @@ public class McpController {
     }
 
     /**
-     * Handle resources/read - read a large result resource by URI. Resource remains until release_resource is called.
+     * Handle resources/read - read a static resource by URI.
      */
     private ResponseEntity<McpRpcResponse> handleResourcesRead(McpRpcRequest request) {
         logger.info("Handling resources/read request");
@@ -549,26 +565,53 @@ public class McpController {
             if (uri == null || uri.trim().isEmpty()) {
                 return createErrorResponse(request.getId(), -32602, "Params.uri is required");
             }
-            String content = actionListService.readResultResource(uri.trim());
-            if (content == null) {
-                return createErrorResponse(request.getId(), -32602, "Resource not found or already released: " + uri);
+            String trimmedUri = uri.trim();
+
+            // Static DSL spec resource
+            if ("mcp-dsl://orchestration-spec/v1".equals(trimmedUri)) {
+                Map<String, Object> spec = objectMapper.readValue(
+                    this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v1.json"),
+                    Map.class
+                );
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("uri", trimmedUri);
+                contentItem.put("mimeType", "application/json");
+                contentItem.put("text", objectMapper.writeValueAsString(spec));
+                Map<String, Object> result = new HashMap<>();
+                result.put("contents", Collections.singletonList(contentItem));
+                McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+                return ResponseEntity.ok(response);
             }
-            Map<String, Object> contentItem = new HashMap<>();
-            contentItem.put("uri", uri);
-            contentItem.put("mimeType", "application/json");
-            contentItem.put("text", content);
-            Map<String, Object> result = new HashMap<>();
-            result.put("contents", Collections.singletonList(contentItem));
-            McpRpcResponse response = new McpRpcResponse(request.getId(), result);
-            return ResponseEntity.ok(response);
+            if ("mcp-dsl://orchestration-spec/v2".equals(trimmedUri)) {
+                Map<String, Object> spec = objectMapper.readValue(
+                    this.getClass().getClassLoader().getResourceAsStream("dsl/orchestration-spec-v2.json"),
+                    Map.class
+                );
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("uri", trimmedUri);
+                contentItem.put("mimeType", "application/json");
+                contentItem.put("text", objectMapper.writeValueAsString(spec));
+                Map<String, Object> result = new HashMap<>();
+                result.put("contents", Collections.singletonList(contentItem));
+                McpRpcResponse response = new McpRpcResponse(request.getId(), result);
+                return ResponseEntity.ok(response);
+            }
+
+            return createErrorResponse(request.getId(), -32602, "Resource not found: " + uri);
         } catch (Exception e) {
             logger.error("Error reading resource", e);
             return createErrorResponse(request.getId(), -32603, "Failed to read resource: " + e.getMessage());
         }
     }
 
+    /** Tool names that may be called directly via tools/call. All other tools are only invokable via the orchestrator (dsl_execute_plan). */
+    private static final Set<String> ALLOWED_ORCHESTRATION_TOOLS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "dsl_execute_plan"
+    )));
+
     /**
      * Handle tools/call method - executes a specific tool with scope enforcement.
+     * Only orchestration tools may be called directly; all other operations must go through dsl_execute_plan.
      */
     private ResponseEntity<McpRpcResponse> handleToolsCall(
             McpRpcRequest request, String authCode, String partnerClientCode, Authentication authentication) {
@@ -589,6 +632,13 @@ public class McpController {
                 return createErrorResponse(request.getId(), -32602, "Tool name is required");
             }
 
+            // Restrict direct calls to orchestration tools only; primitives are only used inside DSL plans.
+            if (!ALLOWED_ORCHESTRATION_TOOLS.contains(toolName)) {
+                auditLogService.logFailure(toolName, arguments, "Tool not allowed for direct call");
+                return createErrorResponse(request.getId(), -32602,
+                    "Only orchestration tools can be called directly. Use dsl_execute_plan with a plan that includes the desired operations. Tool '" + toolName + "' is not in the allowed list.");
+            }
+
             // Check if tool exists
             if (!toolRegistry.hasTool(toolName)) {
                 auditLogService.logFailure(toolName, arguments, "Tool not found");
@@ -597,14 +647,6 @@ public class McpController {
 
             // Get tool definition to check safety metadata
             McpToolDefinition toolDef = toolRegistry.getToolDefinition(toolName);
-
-            // Block direct execution of transaction-only tools.
-            // Only planner/commit tools may be called directly; all others must go through the action plan system.
-            if (!toolRegistry.isPlannerCommitTool(toolName)) {
-                auditLogService.logFailure(toolName, arguments, "Transaction-only tool called directly");
-                return createErrorResponse(request.getId(), -32602,
-                        "This tool is transaction-only and must be used via the action commit system (list_actions → action_list → user approval → execute / execute_continue).");
-            }
 
             // Check scope authorization
             Set<String> userScopes = extractScopes(authentication);
@@ -621,8 +663,25 @@ public class McpController {
             if (!rateLimitOk) {
                 String limitType = Boolean.TRUE.equals(toolDef.getReadOnly()) ? "read" : "write";
                 auditLogService.logFailure(toolName, arguments, "Rate limit exceeded: " + limitType);
-                return createErrorResponse(request.getId(), -32000,
-                    "Rate limit exceeded for " + limitType + " operations");
+
+                // Return a cooldown-style MCP result instead of a JSON-RPC error so
+                // clients see the connector as healthy but temporarily rate-limited.
+                List<Map<String, Object>> contentArray = new ArrayList<>();
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put("type", "text");
+                contentItem.put("text",
+                    "This connector has reached its " + limitType + " rate limit. " +
+                    "Please wait about 60 seconds before making more " + limitType + " tool calls.");
+                contentArray.add(contentItem);
+
+                Map<String, Object> resultMap = new HashMap<>();
+                resultMap.put("content", contentArray);
+                resultMap.put("isError", true);
+                resultMap.put("rateLimited", true);
+                resultMap.put("limitType", limitType);
+
+                McpRpcResponse response = new McpRpcResponse(request.getId(), resultMap);
+                return ResponseEntity.ok(response);
             }
 
             // Extract authCode and partnerClientCode from JWT if in OAuth2 mode
