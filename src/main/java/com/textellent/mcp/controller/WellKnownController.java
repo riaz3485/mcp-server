@@ -39,7 +39,7 @@ public class WellKnownController {
         // Extract base URL from issuer URI
         String baseUrl = oauth2IssuerUri.replaceAll("/oauth2$", "");
 
-        // Build the MCP SSE resource URL from the request
+        // Build the MCP Streamable HTTP resource URL from the request
         String scheme = request.getScheme();
         String serverName = request.getServerName();
         int serverPort = request.getServerPort();
@@ -47,9 +47,9 @@ public class WellKnownController {
 
         if ((scheme.equals("http") && serverPort == 80) ||
             (scheme.equals("https") && serverPort == 443)) {
-            resourceUrl = scheme + "://" + serverName + "/mcp/sse";
+            resourceUrl = scheme + "://" + serverName + "/mcp";
         } else {
-            resourceUrl = scheme + "://" + serverName + ":" + serverPort + "/mcp/sse";
+            resourceUrl = scheme + "://" + serverName + ":" + serverPort + "/mcp";
         }
 
         Map<String, Object> metadata = new HashMap<>();
@@ -76,7 +76,7 @@ public class WellKnownController {
 
         // MCP-specific metadata
         metadata.put("mcp_version", "2025-06-18");
-        metadata.put("mcp_transport", "sse");
+        metadata.put("mcp_transport", "streamable_http");
 
         logger.debug("Returning OAuth metadata with base URL: {}", baseUrl);
 
