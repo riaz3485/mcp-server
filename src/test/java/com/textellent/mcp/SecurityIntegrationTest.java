@@ -3,8 +3,8 @@ package com.textellent.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,9 +19,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Integration tests for security and scope enforcement.
  */
-@SpringBootTest
+@SpringBootTest(properties = "security.mode=local")
 @AutoConfigureMockMvc
-@ActiveProfiles("local") // Use local profile for testing (no security)
+@ActiveProfiles("local")
 public class SecurityIntegrationTest {
 
     @Autowired
@@ -45,7 +45,7 @@ public class SecurityIntegrationTest {
     }
 
     @Test
-    public void testMcpEndpointAcceptsJsonPayload() throws Exception {
+    public void testMcpEndpointRequiresSessionForStreamablePost() throws Exception {
         Map<String, Object> payload = Map.of(
             "jsonrpc", "2.0",
             "id", 1,
@@ -54,17 +54,20 @@ public class SecurityIntegrationTest {
         );
 
         mockMvc.perform(post("/mcp")
+                .accept(MediaType.TEXT_EVENT_STREAM, MediaType.APPLICATION_JSON)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(payload)))
-            .andExpect(status().is2xxSuccessful());
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.jsonRpcError.message").value("Session ID missing"));
     }
 
     @Test
     public void testMcpEndpointRejectsMalformedJson() throws Exception {
         mockMvc.perform(post("/mcp")
+                .accept(MediaType.TEXT_EVENT_STREAM, MediaType.APPLICATION_JSON)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{not-json"))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").exists());
+            .andExpect(jsonPath("$.jsonRpcError").exists());
     }
 }

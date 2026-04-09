@@ -507,9 +507,25 @@ Copyright © 2025 Textellent. All rights reserved.
 - **Health**: Monitor `/actuator/health` endpoint
 - **Metrics**: View `/actuator/prometheus` for insights
 
+## Compatibility Baseline
+
+- Exact pinned stack:
+  - Spring Boot: `4.0.5`
+  - Spring AI: `2.0.0-M3`
+  - Textellent Maestro: `1.0.0`
+- Dependency policy:
+  - No Boot `3.x` artifacts
+  - No Spring AI `1.x` artifacts
+  - Use exact versions above for production parity
+- Upgrade guardrails:
+  - Update app + Maestro versions together as one change
+  - Re-run `mvn test` and verify MCP startup logs include `Registered tools: 28`
+  - Re-check dependency tree for Boot/AI drift before merge
+
 ---
 
 **Version**: 1.0.0
 **MCP Protocol**: 2025-06-18 (Spring AI STREAMABLE)
-**Spring Boot**: 3.3.5
+**Spring Boot**: 4.0.5
+**Spring AI**: 2.0.0-M3
 **Java**: 22
