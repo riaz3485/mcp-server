@@ -157,6 +157,13 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Textellent Maestro for orchestration -->
+        <dependency>
+            <groupId>com.textellent</groupId>
+            <artifactId>maestro-starter</artifactId>
+            <version>1.0.0</version>
+        </dependency>
     </dependencies>
 
     <build>
