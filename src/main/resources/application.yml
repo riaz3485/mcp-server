@@ -6,6 +6,15 @@ server:
 spring:
   application:
     name: textellent-mcp-server
+  ai:
+    mcp:
+      server:
+        enabled: ${SPRING_AI_MCP_ENABLED:true}
+        protocol: ${SPRING_AI_MCP_PROTOCOL:STREAMABLE}
+        streamable-endpoint: /mcp
+        type: SYNC
+        annotation-scanner:
+          enabled: true
 
   jackson:
     default-property-inclusion: non_null
@@ -36,7 +45,7 @@ security:
 
   # API Key Configuration (when mode=apikey)
   api-key: ${API_KEY:}
-  api-key-scopes: ${API_KEY_SCOPES:textellent.read,textellent.write}
+  api-key-scopes: ${API_KEY_SCOPES:read,write}
 
   # CORS Configuration
   # Note: Cannot use * with credentials=true, must specify explicit origins
