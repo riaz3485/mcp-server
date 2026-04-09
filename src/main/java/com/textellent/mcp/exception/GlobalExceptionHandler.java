@@ -1,6 +1,5 @@
 package com.textellent.mcp.exception;
 
-import com.textellent.mcp.models.McpRpcResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -10,6 +9,9 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Global exception handler for the MCP server.
@@ -24,16 +26,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ResponseEntity<McpRpcResponse> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
         logger.error("JSON parse error", ex);
-
-        McpRpcResponse.McpRpcError error = new McpRpcResponse.McpRpcError(
-                -32700,
-                "Parse error: Invalid JSON"
-        );
-
-        McpRpcResponse response = new McpRpcResponse(null, error);
-        return ResponseEntity.status(HttpStatus.OK).body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody("Parse error: Invalid JSON"));
     }
 
     /**
@@ -41,16 +36,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ResponseEntity<McpRpcResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         logger.error("Type mismatch error", ex);
-
-        McpRpcResponse.McpRpcError error = new McpRpcResponse.McpRpcError(
-                -32602,
-                "Invalid params: " + ex.getMessage()
-        );
-
-        McpRpcResponse response = new McpRpcResponse(null, error);
-        return ResponseEntity.status(HttpStatus.OK).body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody("Invalid params: " + ex.getMessage()));
     }
 
     /**
@@ -58,16 +46,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ResponseEntity<McpRpcResponse> handleIllegalArgument(IllegalArgumentException ex) {
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         logger.error("Illegal argument", ex);
-
-        McpRpcResponse.McpRpcError error = new McpRpcResponse.McpRpcError(
-                -32602,
-                "Invalid params: " + ex.getMessage()
-        );
-
-        McpRpcResponse response = new McpRpcResponse(null, error);
-        return ResponseEntity.status(HttpStatus.OK).body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody("Invalid params: " + ex.getMessage()));
     }
 
     /**
@@ -75,15 +56,14 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ResponseEntity<McpRpcResponse> handleGenericException(Exception ex) {
+    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
         logger.error("Unhandled exception", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody("Internal error: " + ex.getMessage()));
+    }
 
-        McpRpcResponse.McpRpcError error = new McpRpcResponse.McpRpcError(
-                -32603,
-                "Internal error: " + ex.getMessage()
-        );
-
-        McpRpcResponse response = new McpRpcResponse(null, error);
-        return ResponseEntity.status(HttpStatus.OK).body(response);
+    private Map<String, Object> errorBody(String message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", message);
+        return body;
     }
 }
