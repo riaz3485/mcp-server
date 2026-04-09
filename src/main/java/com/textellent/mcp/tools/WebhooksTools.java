@@ -1,4 +1,4 @@
-package com.textellent.mcp.tools.webhooks;
+package com.textellent.mcp.tools;
 
 import com.textellent.mcp.core.SpringAiToolEngine;
 import com.textellent.mcp.tools.dto.ToolRequests.WebhookListSubscriptionsRequest;

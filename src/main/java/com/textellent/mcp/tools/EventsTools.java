@@ -1,4 +1,4 @@
-package com.textellent.mcp.tools.events;
+package com.textellent.mcp.tools;
 
 import com.textellent.mcp.core.SpringAiToolEngine;
 import com.textellent.mcp.tools.dto.ToolRequests.*;
