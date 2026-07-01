@@ -81,19 +81,13 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         } else if ("oauth2".equals(securityMode)) {
             logger.info("Configuring OAUTH2 JWT mode");
 
-            // Configure OAuth2 resource server with JWT
-            http
-                .authorizeRequests()
-                    .antMatchers("/health", "/actuator/health", "/version").permitAll()
-                    // Allow .well-known endpoints for OAuth discovery (RFC 8414)
-                    .antMatchers("/.well-known/**").permitAll()
-                    // Allow GET /mcp and GET /mcp/sse for metadata discovery (needed by ChatGPT Apps)
-                    .antMatchers(org.springframework.http.HttpMethod.GET, "/mcp", "/mcp/sse").permitAll()
-                    // All other /mcp endpoints require authentication
-                    .antMatchers("/mcp", "/mcp/**").authenticated()
-                    .anyRequest().authenticated()
-                .and()
-                .oauth2ResourceServer()
+            http.authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/health", "/actuator/health", "/version").permitAll()
+                    .requestMatchers("/.well-known/**").permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/mcp").permitAll()
+                    .requestMatchers("/mcp", "/mcp/**").authenticated()
+                    .anyRequest().authenticated());
+            http.oauth2ResourceServer(oauth2 -> oauth2
                     .bearerTokenResolver(bearerTokenResolver())
                     .jwt()
                     .decoder(jwtDecoder())

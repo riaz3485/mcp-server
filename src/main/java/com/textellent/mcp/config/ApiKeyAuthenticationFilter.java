@@ -12,7 +12,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,7 +24,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
     @Value("${security.api-key:}")
     private String configuredApiKey;
 
-    @Value("${security.api-key-scopes:textellent.read,textellent.write}")
+    @Value("${security.api-key-scopes:read,write}")
     private String apiKeyScopes;
 
     private static final String API_KEY_HEADER = "X-API-Key";

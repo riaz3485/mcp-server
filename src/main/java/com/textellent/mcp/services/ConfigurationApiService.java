@@ -41,6 +41,7 @@ public class ConfigurationApiService {
                     .uri("/api/v1/event/subscribe.json")
                     .header("Content-Type", "application/json")
                     .header("authCode", authCode)
+                    .header("partnerClientCode", partnerClientCode)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requestBody)
                     .retrieve()
@@ -75,6 +76,7 @@ public class ConfigurationApiService {
                     .header("event", eventType)
                     .header("targetUrl", targetUrl)
                     .header("authCode", authCode)
+                    .header("partnerClientCode", partnerClientCode)
                     .retrieve()
                     .bodyToMono(String.class)
                     .onErrorResume(e -> {
@@ -98,19 +100,30 @@ public class ConfigurationApiService {
         logger.info("Listing webhook subscriptions");
 
         try {
-            String response = webClient.get()
-                    .uri("/api/v1/event/subscriptions.json")
-                    .header("Content-Type", "application/json")
-                    .header("authCode", authCode)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .onErrorResume(e -> {
-                        logger.error("Error listing webhook subscriptions", e);
-                        return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
-                    })
-                    .block();
-
-            return response;
+            ObjectMapper mapper = new ObjectMapper();
+            return TextellentPagedListMerger.mergeToJsonWithTotalCount(
+                    mapper,
+                    logger,
+                    "webhook_list_subscriptions",
+                    pageNum -> webClient.get()
+                            .uri(uriBuilder -> uriBuilder
+                                    .path("/api/v1/event/subscriptions.json")
+                                    .queryParam("pageNum", pageNum)
+                                    .build())
+                            .header("Content-Type", "application/json")
+                            .header("authCode", authCode)
+                            .header("partnerClientCode", partnerClientCode)
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .onErrorResume(e -> {
+                                logger.error("Error listing webhook subscriptions page {}", pageNum, e);
+                                return Mono.just("{\"error\": \"" + e.getMessage() + "\"}");
+                            })
+                            .block(),
+                    TextellentPagedListMerger::parseSubscriptionsListPage,
+                    "subscriptions",
+                    TextellentPagedListMerger.DEFAULT_MAX_PAGES
+            );
         } catch (Exception e) {
             logger.error("Failed to list webhook subscriptions", e);
             throw new RuntimeException("Failed to list webhook subscriptions: " + e.getMessage(), e);

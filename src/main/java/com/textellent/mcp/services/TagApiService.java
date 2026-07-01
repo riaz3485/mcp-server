@@ -359,8 +359,16 @@ public class TagApiService {
                     logger.warn("Failed to parse tags for summary, returning raw response", e);
                     return response;
                 }
-            } else {
-                logger.warn("Response is null");
+                Map<String, Object> searchResponse = new HashMap<>();
+                searchResponse.put("exists", foundTagName != null);
+                if (foundTagName != null) {
+                    searchResponse.put("tagName", foundTagName);
+                    searchResponse.put("tagNames", Collections.singletonList(foundTagName));
+                } else {
+                    searchResponse.put("tagNames", new ArrayList<>());
+                }
+                logger.info("Tag '{}' exists: {}", searchTagName, foundTagName != null);
+                return mapper.writeValueAsString(searchResponse);
             }
 
             // Should not reach here
