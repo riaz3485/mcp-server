@@ -1,23 +1,23 @@
 # Textellent MCP Server
 
-A production-ready Spring Boot microservice that exposes Textellent's REST APIs through the **Model Context Protocol (MCP)** using JSON-RPC 2.0 over HTTPS.
+A Spring Boot server that exposes Textellent APIs through **Spring AI MCP** using **STREAMABLE HTTP** transport.
 
-Designed for deployment as a **public, remote MCP connector** compatible with Claude Connectors, ChatGPT Apps (MCP), n8n, and other MCP-compatible platforms.
+This codebase now uses a pure Spring AI MCP implementation (no legacy custom MCP controller/registry stack).
 
 ## Features
 
 ### Core Capabilities
 - **26 MCP Tools** exposing Textellent's current API surface
-- **MCP Protocol 2025-06-18** compliant implementation
-- **Streamable HTTP Transport** with JSON-RPC 2.0
-- **SSE Support** for streaming events (optional)
-- **JSON Schema Validation** for all tool arguments
+- **Spring AI MCP (STREAMABLE)** endpoint at `/mcp`
+- **Domain-modular tool classes** under `com.textellent.mcp.tools`
+- **Shared execution core** under `com.textellent.mcp.core`
+- **JSON schema-based validation** using `src/main/resources/schemas/*.json` as the source of truth
 
 ### Security & Authorization
 - **OAuth2 Resource Server** with JWT validation
 - **Scope-based Access Control**:
-  - `textellent.read` - Read-only operations
-  - `textellent.write` - Write/mutating operations
+  - `read` - Read-only operations
+  - `write` - Write/mutating operations
 - **API Key Authentication** (alternative mode)
 - **Multi-tenant Isolation** via JWT claims
 - **CORS Configuration** for web clients
@@ -29,12 +29,6 @@ Designed for deployment as a **public, remote MCP connector** compatible with Cl
 - **Audit Logging** for all tool calls
 - **Health Checks** and metrics (Spring Actuator)
 - **Prometheus Metrics** for monitoring
-
-### Tool Safety Metadata
-- **Read-Only Hints** for non-mutating tools
-- **Destructive Hints** for dangerous operations
-- **Required Scope** annotations per tool
-- **Tool Categorization** in listings
 
 ## Quick Start
 
@@ -85,7 +79,7 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
 
 ## Architecture
 
-### Deployment Architecture
+### Runtime Architecture
 
 ```
 ┌─────────────────────────────────────────┐
@@ -113,30 +107,27 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
 │                                          │
 │   ┌────────────────────────────────┐    │
 │   │  Security Layer                │    │
-│   │  - OAuth2 JWT Validation       │    │
+│   │  - OAuth2 / API key / local    │    │
 │   │  - Scope Enforcement           │    │
 │   │  - Tenant Isolation            │    │
 │   └────────────┬───────────────────┘    │
 │                │                         │
 │   ┌────────────▼───────────────────┐    │
-│   │  MCP Controller                │    │
-│   │  - JSON-RPC Router             │    │
-│   │  - Rate Limiter                │    │
-│   │  - Audit Logger                │    │
+│   │  Spring AI MCP Server          │    │
+│   │  - Streamable endpoint (/mcp)  │    │
+│   │  - @McpTool annotations        │    │
 │   └────────────┬───────────────────┘    │
 │                │                         │
 │   ┌────────────▼───────────────────┐    │
-│   │  Tool Registry                 │    │
-│   │  - 32 Tool Definitions         │    │
-│   │  - Safety Metadata             │    │
-│   │  - Schema Validation           │    │
+│   │  Tool Layer                    │    │
+│   │  - com.textellent.mcp.tools    │    │
+│   │  - messages/contacts/tags/...  │    │
 │   └────────────┬───────────────────┘    │
 │                │                         │
 │   ┌────────────▼───────────────────┐    │
-│   │  Resilience Layer              │    │
-│   │  - Circuit Breaker             │    │
-│   │  - Retry Logic                 │    │
-│   │  - Timeout Management          │    │
+│   │  Core Layer                    │    │
+│   │  - dispatch / auth / rate-limit│    │
+│   │  - schema validation           │    │
 │   └────────────┬───────────────────┘    │
 └────────────────┼────────────────────────┘
                  │
@@ -161,8 +152,8 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
    └─→ Rate limit check (tenant-specific)
 
 3. Tool Execution
-   ├─→ Validate arguments against JSON schema
-   ├─→ Execute tool via registry
+   ├─→ Validate arguments against canonical JSON schema
+   ├─→ Execute tool via modular core dispatcher
    ├─→ Apply circuit breaker & retries
    └─→ Call Textellent backend API
 
@@ -178,30 +169,25 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive guides on:
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/mcp` | Required | Main MCP JSON-RPC endpoint |
-| GET | `/mcp/sse` | Required | SSE event stream (optional) |
+| POST | `/mcp` | Required | Spring AI MCP streamable endpoint |
 | GET | `/health` | Public | Health check |
 | GET | `/version` | Public | Version information |
 | GET | `/actuator/health` | Auth | Detailed health |
 | GET | `/actuator/metrics` | Auth | Metrics |
 | GET | `/actuator/prometheus` | Auth | Prometheus metrics |
 
-### MCP Methods
+### Tool Package Layout
 
-| Method | Description | Auth Required |
-|--------|-------------|---------------|
-| `initialize` | Protocol handshake | No |
-| `tools/list` | List tools visible for this token (orchestrator + DSL primitives for discovery) | Yes (read scope) |
-| `tools/call` | Execute a tool (`dsl_execute_plan` only; primitives run inside plans) | Yes (tool-specific) |
-| `notifications/*` | Client notifications | No |
+- `com.textellent.mcp.tools.messages`
+- `com.textellent.mcp.tools.contacts`
+- `com.textellent.mcp.tools.tags`
+- `com.textellent.mcp.tools.events`
+- `com.textellent.mcp.tools.webhooks`
+- `com.textellent.mcp.core` (shared execution, credentials, and schema validation)
 
 ## Available Tools
 
-### Orchestration (direct call)
-- `dsl_execute_plan` - Execute a JSON-based orchestration plan (**read/write/destructive**, depending on nested tools). This is the only tool clients should call via `tools/call`. Use `plan.version` `1.1` for task/simplePlan features; `2.0` is a **breaking** pipeline form (`plan.pipeline` only, no `task`/`simplePlan`). Fetch `mcp-dsl://orchestration-spec/v2` for the v2 spec. Server-side execution is handled by **`OrchestrationDslEngine`** (`com.textellent.mcp.services.dsl`), which routes by `plan.version` and runs the appropriate internal runtime (simple plan, task, or pipeline).
-
-### DSL primitives (discovery + plans only)
-Contacts, tags, messages, events, and configuration tools appear in `tools/list` so agents know exact `name` values and `inputSchema` for plan steps. They are **not** callable via `tools/call`; reference them inside `dsl_execute_plan`. Each tool schema file and `tools/list` entry includes `x-textellent-mcp` (`directToolsCall: false`, `invocation: dsl_step_only`) plus the same policy in the tool description and root `inputSchema`/`outputSchema` descriptions (applied at load time).
+Contacts, tags, messages, events, and configuration tools are all directly callable through `tools/call`.
 
 ## Security Configuration
 
@@ -227,7 +213,7 @@ OAUTH2_JWK_SET_URI=https://your-auth-provider.com/.well-known/jwks.json
   "exp": 1735689600,
   "iat": 1735686000,
   "tenant_id": "acme-corp",
-  "scope": "textellent.read textellent.write"
+  "scope": "read write"
 }
 ```
 
@@ -236,7 +222,7 @@ OAUTH2_JWK_SET_URI=https://your-auth-provider.com/.well-known/jwks.json
 ```yaml
 SECURITY_MODE=apikey
 API_KEY=your-secret-key-here
-API_KEY_SCOPES=textellent.read,textellent.write
+API_KEY_SCOPES=read,write
 ```
 
 **Client Request**:
@@ -258,80 +244,16 @@ SPRING_PROFILES_ACTIVE=local
 
 ## Usage Examples
 
-### Initialize Connection
+### Call a Tool
 
 ```bash
 curl -X POST https://mcp.yourcompany.com/mcp \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "MCP-Protocol-Version: 2025-06-18" \
+  -H "authCode: YOUR_TEXTELLENT_AUTH_CODE" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
-    "method": "initialize",
-    "params": {}
-  }'
-```
-
-Response:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "protocolVersion": "2025-06-18",
-    "capabilities": {
-      "tools": {}
-    },
-    "serverInfo": {
-      "name": "textellent-mcp-server",
-      "version": "1.0.0"
-    }
-  }
-}
-```
-
-### List Available Tools
-
-```bash
-curl -X POST https://mcp.yourcompany.com/mcp \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "authCode: YOUR_TEXTELLENT_AUTH_CODE" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/list",
-    "params": {}
-  }'
-```
-
-Response includes categorized tools:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "tools": [...],
-    "categorized": {
-      "readOnly": [...],
-      "write": [...]
-    },
-    "totalCount": 26
-  }
-}
-```
-
-### Call a Read-Only Tool
-
-```bash
-curl -X POST https://mcp.yourcompany.com/mcp \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "authCode: YOUR_TEXTELLENT_AUTH_CODE" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
     "method": "tools/call",
     "params": {
       "name": "contacts_get_all",
@@ -339,30 +261,6 @@ curl -X POST https://mcp.yourcompany.com/mcp \
         "searchKey": "",
         "pageSize": 10,
         "pageNum": 1
-      }
-    }
-  }'
-```
-
-### Call a Write Tool
-
-```bash
-curl -X POST https://mcp.yourcompany.com/mcp \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "authCode: YOUR_TEXTELLENT_AUTH_CODE" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 4,
-    "method": "tools/call",
-    "params": {
-      "name": "messages_send",
-      "arguments": {
-        "text": "Hello from MCP!",
-        "from": "+17607297951",
-        "to": "+15109721012",
-        "mediaFileIds": [],
-        "mediaFileURLs": []
       }
     }
   }'
@@ -561,7 +459,7 @@ Submit to Claude Directory with:
 - Endpoint: `https://your-server.com/mcp`
 - Protocol: MCP over HTTPS
 - Auth: OAuth2 with PKCE
-- Scopes: `textellent.read`, `textellent.write`
+- Scopes: `read`, `write`
 
 ### ChatGPT Apps (MCP)
 
@@ -609,9 +507,25 @@ Copyright © 2025 Textellent. All rights reserved.
 - **Health**: Monitor `/actuator/health` endpoint
 - **Metrics**: View `/actuator/prometheus` for insights
 
+## Compatibility Baseline
+
+- Exact pinned stack:
+  - Spring Boot: `4.0.5`
+  - Spring AI: `2.0.0-M3`
+  - Textellent Maestro: `1.0.0`
+- Dependency policy:
+  - No Boot `3.x` artifacts
+  - No Spring AI `1.x` artifacts
+  - Use exact versions above for production parity
+- Upgrade guardrails:
+  - Update app + Maestro versions together as one change
+  - Re-run `mvn test` and verify MCP startup logs include `Registered tools: 28`
+  - Re-check dependency tree for Boot/AI drift before merge
+
 ---
 
 **Version**: 1.0.0
-**MCP Protocol**: 2025-06-18
-**Spring Boot**: 2.4.5
-**Java**: 8+
+**MCP Protocol**: 2025-06-18 (Spring AI STREAMABLE)
+**Spring Boot**: 4.0.5
+**Spring AI**: 2.0.0-M3
+**Java**: 22

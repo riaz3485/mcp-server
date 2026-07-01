@@ -210,8 +210,8 @@ POST /mcp
 ```
 
 Supported methods:
-- `tools/list` - Returns orchestration + DSL primitive definitions for discovery
-- `tools/call` - Executes `dsl_execute_plan` (primitives are step-only inside plans)
+- `tools/list` - Returns tool definitions for discovery
+- `tools/call` - Executes tool calls
 
 ## Example Usage
 
@@ -240,7 +240,7 @@ curl -X POST http://localhost:8080/mcp \
     "id": 2,
     "method": "tools/call",
     "params": {
-      "name": "dsl_execute_plan",
+      
       "arguments": {
         "plan": {
           "version": "1.1",

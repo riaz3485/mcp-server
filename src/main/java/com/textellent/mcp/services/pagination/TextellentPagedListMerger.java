@@ -7,8 +7,10 @@ import org.slf4j.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Merges Textellent list API pages (pageNum-based) into a single in-memory list and serializes
@@ -100,6 +102,9 @@ public final class TextellentPagedListMerger {
         List<Map<String, Object>> allRows = new ArrayList<>();
         int fullPageRowCount = -1;
         int apiReportedTotalOnFirstPage = -1;
+        int expectedPagesFromApiHints = -1;
+        int apiPageSizeOnFirstPage = -1;
+        Set<Integer> seenPageFingerprints = new HashSet<>();
 
         for (int pageNum = 1; pageNum <= maxPages; pageNum++) {
             String pageResponse = fetcher.fetch(pageNum);
@@ -130,9 +135,24 @@ public final class TextellentPagedListMerger {
             if (pageNum == 1 && page.apiReportedTotal > 0) {
                 apiReportedTotalOnFirstPage = page.apiReportedTotal;
             }
+            if (pageNum == 1 && page.apiPageSize > 0) {
+                apiPageSizeOnFirstPage = page.apiPageSize;
+            }
 
-            allRows.addAll(page.rows);
             int thisPageCount = page.rows.size();
+            int pageFingerprint = page.rows.hashCode();
+            if (!seenPageFingerprints.add(pageFingerprint)) {
+                if (pageNum == 2 && apiReportedTotalOnFirstPage <= 0 && apiPageSizeOnFirstPage <= 0) {
+                    log.info("{}: page 2 matched page 1 with no pagination hints; treating endpoint as single-page for this request",
+                            logLabel);
+                    break;
+                }
+                log.warn("{}: detected repeated page fingerprint at page {}", logLabel, pageNum);
+                log.warn("{}: stopping pagination before appending duplicate page {} content",
+                        logLabel, pageNum);
+                break;
+            }
+            allRows.addAll(page.rows);
 
             if (fullPageRowCount < 0) {
                 int apiPageSize = page.apiPageSize > 0 ? page.apiPageSize : Integer.MAX_VALUE;
@@ -142,10 +162,27 @@ public final class TextellentPagedListMerger {
                 }
                 log.info("{}: inferred full-page row count {} (api pageSize={}, first page rows={})",
                         logLabel, fullPageRowCount, page.apiPageSize, thisPageCount);
+                if (page.apiPageSize > 0 && apiReportedTotalOnFirstPage > 0) {
+                    expectedPagesFromApiHints = (int) Math.ceil((double) apiReportedTotalOnFirstPage / page.apiPageSize);
+                    log.info("{}: API hints suggest {} total pages (totalCount={}, pageSize={})",
+                            logLabel, expectedPagesFromApiHints, apiReportedTotalOnFirstPage, page.apiPageSize);
+                }
             }
 
             if (thisPageCount < fullPageRowCount) {
                 log.debug("{}: partial page {} ({} rows), stopping", logLabel, pageNum, thisPageCount);
+                break;
+            }
+
+            if (apiReportedTotalOnFirstPage > 0 && allRows.size() >= apiReportedTotalOnFirstPage) {
+                log.debug("{}: reached API reported totalCount={} at page {}, stopping",
+                        logLabel, apiReportedTotalOnFirstPage, pageNum);
+                break;
+            }
+
+            if (expectedPagesFromApiHints > 0 && pageNum >= expectedPagesFromApiHints) {
+                log.debug("{}: reached expected page limit {} from API hints, stopping",
+                        logLabel, expectedPagesFromApiHints);
                 break;
             }
 
@@ -239,18 +276,20 @@ public final class TextellentPagedListMerger {
                 return null;
             }
 
+            JsonNode dataNode = unwrapTextAndData(rootNode, mapper);
+            if (dataNode == null) {
+                return null;
+            }
+
             JsonNode tagsNode;
-            if (rootNode.isArray()) {
-                tagsNode = rootNode;
-            } else if (rootNode.has("text")) {
-                JsonNode parsedText = mapper.readTree(rootNode.get("text").asText());
-                if (parsedText.isArray()) {
-                    tagsNode = parsedText;
-                } else {
-                    tagsNode = parsedText.get("tags");
-                }
+            JsonNode totalCountNode = null;
+            JsonNode pageSizeNode = null;
+            if (dataNode.isArray()) {
+                tagsNode = dataNode;
             } else {
-                tagsNode = rootNode.get("tags");
+                tagsNode = dataNode.get("tags");
+                totalCountNode = dataNode.get("totalCount");
+                pageSizeNode = dataNode.get("pageSize");
             }
 
             if (tagsNode == null || !tagsNode.isArray()) {
@@ -259,7 +298,9 @@ public final class TextellentPagedListMerger {
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> rows = mapper.convertValue(tagsNode, List.class);
-            return new PageRowsResult(rows, 0, 0);
+            int total = parseOptionalNonNegativeInt(totalCountNode, 0);
+            int pageSize = parseOptionalNonNegativeInt(pageSizeNode, 0);
+            return new PageRowsResult(rows, pageSize, total);
         } catch (Exception e) {
             return null;
         }

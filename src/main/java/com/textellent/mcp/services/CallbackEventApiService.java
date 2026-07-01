@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * Service for Textellent Callback Event API operations.
  * List endpoints use pageNum + limit with {@link TextellentPagedListMerger} so all pages are merged.
- * Tool entry points are registered via lambdas in {@link com.textellent.mcp.registry.McpToolRegistry}.
+ * Tool entry points are wired through the Spring AI tool engine.
  */
 @Service
 public class CallbackEventApiService {

@@ -1,5 +1,5 @@
 {
-  "description": "DEPRECATED: Use tags_get_summary instead for listing tags. This tool is only needed when you require the full list of tag names in a single result. For 'list my tags' or 'show tags' requests, ALWAYS use tags_get_summary which is more efficient. Use this tool directly only when a single call to this tool is sufficient to complete the user's request; for any sequence of two or more tool calls, use `dsl_execute_plan` with a multi-step plan instead.",
+  "description": "DEPRECATED: Use tags_get_summary instead for listing tags. This tool is only needed when you require the full list of tag names in a single result. For 'list my tags' or 'show tags' requests, ALWAYS use tags_get_summary which is more efficient. Use this tool directly when it matches the user's request.",
   "x-textellent-mcp": {
     "directToolsCall": false,
     "invocation": "dsl_step_only"

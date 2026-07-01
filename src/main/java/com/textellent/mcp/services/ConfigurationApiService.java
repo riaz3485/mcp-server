@@ -44,6 +44,7 @@ public class ConfigurationApiService {
                     .uri("/api/v1/event/subscribe.json")
                     .header("Content-Type", "application/json")
                     .header("authCode", authCode)
+                    .header("partnerClientCode", partnerClientCode)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requestBody)
                     .retrieve()
@@ -78,6 +79,7 @@ public class ConfigurationApiService {
                     .header("event", eventType)
                     .header("targetUrl", targetUrl)
                     .header("authCode", authCode)
+                    .header("partnerClientCode", partnerClientCode)
                     .retrieve()
                     .bodyToMono(String.class)
                     .onErrorResume(e -> {
@@ -113,6 +115,7 @@ public class ConfigurationApiService {
                                     .build())
                             .header("Content-Type", "application/json")
                             .header("authCode", authCode)
+                            .header("partnerClientCode", partnerClientCode)
                             .retrieve()
                             .bodyToMono(String.class)
                             .onErrorResume(e -> {

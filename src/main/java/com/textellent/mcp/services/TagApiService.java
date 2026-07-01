@@ -230,10 +230,8 @@ public class TagApiService {
                 searchResponse.put("exists", foundTagName != null);
                 if (foundTagName != null) {
                     searchResponse.put("tagName", foundTagName);
-                    searchResponse.put("total", 1);
                     searchResponse.put("tagNames", Collections.singletonList(foundTagName));
                 } else {
-                    searchResponse.put("total", 0);
                     searchResponse.put("tagNames", new ArrayList<>());
                 }
                 logger.info("Tag '{}' exists: {}", searchTagName, foundTagName != null);

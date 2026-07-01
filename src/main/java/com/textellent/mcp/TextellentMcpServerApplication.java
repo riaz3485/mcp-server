@@ -22,7 +22,7 @@ public class TextellentMcpServerApplication {
         System.out.println("\n========================================");
         System.out.println("Textellent MCP Server Started!");
         System.out.println("MCP Endpoint: http://localhost:" + port + contextPath + "mcp");
-        System.out.println("Health Check: http://localhost:" + port + contextPath + "mcp/health");
+        System.out.println("Health Check: http://localhost:" + port + contextPath + "health");
         System.out.println("========================================\n");
     }
 }

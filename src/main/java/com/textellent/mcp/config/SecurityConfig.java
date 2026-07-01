@@ -99,7 +99,7 @@ public class SecurityConfig {
             http.authorizeHttpRequests(auth -> auth
                     .requestMatchers("/health", "/actuator/health", "/version").permitAll()
                     .requestMatchers("/.well-known/**").permitAll()
-                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/mcp", "/mcp/sse").permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/mcp").permitAll()
                     .requestMatchers("/mcp", "/mcp/**").authenticated()
                     .anyRequest().authenticated());
             http.oauth2ResourceServer(oauth2 -> oauth2
