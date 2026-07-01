@@ -14,7 +14,7 @@ spring:
         streamable-endpoint: /mcp
         type: SYNC
         annotation-scanner:
-          enabled: true
+          enabled: false
 
   jackson:
     default-property-inclusion: non_null

@@ -30,15 +30,12 @@
       },
       "total": {
         "type": "integer",
-        "description": "Total number of tags (when no tagName filter) or 1/0 (when tagName filter is used)"
+        "description": "Total number of tags (only present when no tagName filter is used)."
       },
       "tagNames": {
         "type": "array",
         "description": "Array of tag names (strings only). When tagName is provided, contains only the matching tag if found."
       }
-    },
-    "required": [
-      "total"
-    ]
+    }
   }
 }
