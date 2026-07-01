@@ -55,16 +55,13 @@ public class McpToolRegistry {
     private MessageApiService messageApiService;
 
     @Autowired
-    private com.textellent.mcp.services.DslOrchestrationService dslOrchestrationService;
+    private com.textellent.mcp.services.dsl.OrchestrationDslEngine orchestrationDslEngine;
 
     @Autowired
     private ContactApiService contactApiService;
 
     @Autowired
     private TagApiService tagApiService;
-
-    @Autowired
-    private AppointmentApiService appointmentApiService;
 
     @Autowired
     private CallbackEventApiService callbackEventApiService;
@@ -86,7 +83,7 @@ public class McpToolRegistry {
      */
     private void registerAllTools() {
         // Orchestration: exposed for direct tools/call. Primitives appear in tools/list for DSL discovery but are only invokable inside dsl_execute_plan (see McpController).
-        registerTool("dsl_execute_plan", dslOrchestrationService::executePlan);
+        registerTool("dsl_execute_plan", orchestrationDslEngine::executePlan);
 
         // Message tools (invoked only by orchestrator when executing DSL plans)
         registerTool("messages_send", messageApiService::sendMessage);
@@ -111,11 +108,6 @@ public class McpToolRegistry {
         registerTool("tags_delete", tagApiService::deleteTag);
         registerTool("tags_remove_contacts", tagApiService::removeContactsFromTag);
 
-        // Appointment tools
-        registerTool("appointments_create", appointmentApiService::createAppointment);
-        registerTool("appointments_update", appointmentApiService::updateAppointment);
-        registerTool("appointments_cancel", appointmentApiService::cancelAppointment);
-
         // Callback event tools (single fetchPagedEvents implementation; paths registered here)
         registerTool("events_phone_added_wrong_number", (args, ac, pc) ->
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToWrongNumber.json", args, ac, pc));
@@ -131,12 +123,6 @@ public class McpToolRegistry {
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberAddedToDNT.json", args, ac, pc));
         registerTool("events_associate_contact_tag", (args, ac, pc) ->
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/associateContactToTag.json", args, ac, pc));
-        registerTool("events_appointment_created", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentCreated.json", args, ac, pc));
-        registerTool("events_appointment_updated", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentUpdated.json", args, ac, pc));
-        registerTool("events_appointment_canceled", (args, ac, pc) ->
-                callbackEventApiService.fetchPagedEvents("/api/v1/events/appointmentCanceled.json", args, ac, pc));
         registerTool("events_phone_removed_dnt", (args, ac, pc) ->
                 callbackEventApiService.fetchPagedEvents("/api/v1/events/phoneNumberRemovedFromDNT.json", args, ac, pc));
 

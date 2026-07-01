@@ -311,7 +311,7 @@ public class ContactApiService {
 
         try {
             String extId = (String) arguments.getOrDefault("extId", "");
-            String phoneNumbers = (String) arguments.get("phoneNumbers");
+            String phoneNumbers = normalizePhoneNumbers(arguments.get("phoneNumbers"));
 
             String response = webClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -334,6 +334,23 @@ public class ContactApiService {
             logger.error("Failed to find contact with multiple phone numbers", e);
             throw new RuntimeException("Failed to find contact with multiple phone numbers: " + e.getMessage(), e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String normalizePhoneNumbers(Object phoneNumbersArg) {
+        if (phoneNumbersArg instanceof String) {
+            return (String) phoneNumbersArg;
+        }
+        if (phoneNumbersArg instanceof List) {
+            List<String> numbers = new ArrayList<>();
+            for (Object item : (List<Object>) phoneNumbersArg) {
+                if (item != null && !String.valueOf(item).trim().isEmpty()) {
+                    numbers.add(String.valueOf(item).trim());
+                }
+            }
+            return String.join(",", numbers);
+        }
+        throw new IllegalArgumentException("phoneNumbers must be a comma-separated string or string array.");
     }
 
     /**

@@ -437,7 +437,7 @@ Once Claude Desktop is connected to your MCP server, you can ask it natural lang
 - "Plan and execute a workflow to list all my contacts using dsl_execute_plan"
 - "Delete all my tags safely in batches using a single orchestration plan"
 - "Import drivers and constructors from CSV with one DSL plan"
-- "Create an appointment for tomorrow at 2pm via the orchestrator"
+- "Send a message reminder to a contact via the orchestrator"
 
 Claude will automatically:
 1. Understand your intent
